@@ -1,4 +1,20 @@
-from sim.entities import Nation, Company, Bank, Loan, Event, Region, ShippingRoute
+from sim.entities import (
+    Nation,
+    Company,
+    Bank,
+    Loan,
+    Event,
+    Region,
+    ShippingRoute,
+    Market,
+    Commodity,
+    Inventory,
+    ProductionFacility,
+)
+
+from sim.systems.production import produce
+
+
 usa = Nation(
     id="USA",
     name="United States",
@@ -7,6 +23,30 @@ usa = Nation(
     debt_total=34_000_000,
     tax_rate=0.20,
     central_bank_rate=0.045,
+)
+
+oil = Commodity(
+    id="crude_oil",
+    name="Crude Oil",
+    unit="barrel"
+)
+
+steel = Commodity(
+    id="steel",
+    name="Steel",
+    unit="tonne"
+)
+
+food = Commodity(
+    id="food",
+    name="Food",
+    unit="tonne"
+)
+
+fuel = Commodity(
+    id="fuel",
+    name="Fuel",
+    unit="barrel"
 )
 
 oil_co = Company(
@@ -36,6 +76,22 @@ loan_1 = Loan(
     term_ticks=52,
 )
 
+refinery = ProductionFacility(
+    id="REFINERY_01",
+    company_id="OILCO",
+    region_id="PORT_USA",
+
+    inputs={
+        "crude_oil": 1.0,
+    },
+
+    outputs={
+        "fuel": 0.9,
+    },
+
+    capacity=1000,
+)
+
 iran = Nation(
     id="IRN",
     name="Iran",
@@ -48,6 +104,7 @@ iran = Nation(
 
 port_usa = Region(id="PORT_USA", name="Port of Houston", owner_nation_id="USA", is_port=True)
 port_iran = Region(id="PORT_IRN", name="Port of Bandar Abbas", owner_nation_id="IRN", is_port=True)
+usa_market = Market(id="NYSE", nation_id="USA")
 
 hormuz_route = ShippingRoute(
     id="R_HORMUZ",
@@ -58,7 +115,6 @@ hormuz_route = ShippingRoute(
 )
 
 from sim.engine import World
-from sim.entities import Event
 
 world = World()
 world.add_nation(usa)
@@ -69,37 +125,123 @@ world.add_route(hormuz_route)
 world.add_company(oil_co)
 world.add_bank(first_bank)
 world.add_loan(loan_1)
+world.add_market(usa_market)
+world.add_commodity(oil)
+world.add_commodity(fuel)
+world.add_inventory("OILCO", "crude_oil", 50000)
+world.add_production_facility(refinery)
 
-print("--- Before any ticks ---")
-print(oil_co)
+print("\n--- Initial inventories ---")
 
-world.run_tick()
-print("\n--- After tick 1 ---")
-print(oil_co)
-print(first_bank)
-print(usa)
-print(loan_1)
-
-strike = Event(
-    id="E1",
-    event_type="missile_strike",
-    timestamp_hours=world.current_hour + 10,
-    target_id="OILCO",
-    description="Refinery hit, capacity halved",
+print(
+    "Crude:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "crude_oil"
+    )
 )
-world.apply_event(strike)
 
-print("\n--- After missile strike (instant, no tick) ---")
-print(oil_co)
+print(
+    "Fuel:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "fuel"
+    )
+)
 
 world.run_tick()
-print("\n--- Route state after tick 2 ---")
-print(hormuz_route)
-print(loan_1)
 
-# simulate a blockade event
-hormuz_route.risk_level = 1.0
-hormuz_route.status = "blockaded"
+print("\n--- After production tick ---")
+
+print(
+    "Crude:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "crude_oil"
+    )
+)
+
+print(
+    "Fuel:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "fuel"
+    )
+)
+
 world.run_tick()
-print("\n--- Route state after blockade ---")
-print(hormuz_route)
+print("\n--- After second production tick ---")
+refinery.operational = False
+
+print(
+    "Crude:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "crude_oil"
+    )
+)
+
+print(
+    "Fuel:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "fuel"
+    )
+)
+
+world.run_tick()
+print("\n--- After third production tick (refinery offline) ---")
+
+print(
+    "Crude:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "crude_oil"
+    )
+)
+
+print(
+    "Fuel:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "fuel"
+    )
+)
+
+world.run_tick()
+print("\n--- After fourth production tick (refinery offline) ---")
+refinery.operational = True
+
+print(
+    "Crude:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "crude_oil"
+    )
+)
+
+print(
+    "Fuel:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "fuel"
+    )
+)
+
+world.run_tick()
+print("\n--- After fifth production tick (refinery back online) ---")
+print(
+    "Crude:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "crude_oil"
+    )
+)
+
+print(
+    "Fuel:",
+    world.get_inventory_quantity(
+        "OILCO",
+        "fuel"
+    )
+)

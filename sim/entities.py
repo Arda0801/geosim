@@ -62,3 +62,33 @@ class ShippingRoute(BaseModel):
     status: str = "open"  # "open", "restricted", "blockaded"
     current_flow: float = 0.0
     current_cost: float = 0.0
+
+class Market(BaseModel):
+    id: str
+    nation_id: str
+    index_value: float = 1000.0  # like an S&P 500 equivalent, arbitrary start
+    volatility_index: float = 10.0  # like VIX, arbitrary start
+
+class Commodity(BaseModel):
+    id: str
+    name: str
+    unit: str
+
+class Inventory(BaseModel):
+    owner_id: str
+    commodity_id: str
+    quantity: float = 0.0
+    capacity: float = float("inf")
+
+class ProductionFacility(BaseModel):
+    id: str
+    company_id: str
+    region_id: str
+
+    inputs: dict[str, float]
+    outputs: dict[str, float]
+
+    capacity: float
+    efficiency: float = 1.0
+
+    operational: bool = True

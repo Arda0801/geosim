@@ -1,4 +1,18 @@
-from sim.entities import Nation, Company, Bank, Loan, Event, Region, ShippingRoute
+from sim.entities import (
+    Nation,
+    Company,
+    Bank,
+    Loan,
+    Event,
+    Region,
+    ShippingRoute,
+    Market,
+    Commodity,
+    Inventory,
+    ProductionFacility,
+)
+
+from sim.systems.production import produce
 
 HOURS_PER_TICK = 24 * 7  # 1 tick = 1 week
 
@@ -14,6 +28,14 @@ class World:
         self.events: list[Event] = []
         self.regions: dict[str, Region] = {}
         self.routes: dict[str, ShippingRoute] = {}
+        self.markets: dict[str, Market] = {}
+        self.day_number = 0
+        self.commodities: dict[str, Commodity] = {}
+        self.inventories: dict[tuple[str, str], Inventory] = {}
+        self.production_facilities: dict[str, ProductionFacility] = {}
+
+    def add_market(self, market: Market):
+        self.markets[market.id] = market
 
     def add_region(self, region: Region):
         self.regions[region.id] = region
@@ -27,6 +49,37 @@ class World:
     def add_company(self, company: Company):
         self.companies[company.id] = company
 
+    def add_commodity(self, commodity):
+        self.commodities[commodity.id] = commodity
+
+    def add_production_facility(self, facility: ProductionFacility):
+        self.production_facilities[facility.id] = facility
+
+    def add_inventory(
+        self,
+        owner_id: str,
+        commodity_id: str,
+        quantity: float
+    ):
+        key = (owner_id, commodity_id)
+
+        if key not in self.inventories:
+            self.inventories[key] = Inventory(
+                owner_id=owner_id,
+                commodity_id=commodity_id,
+                quantity=0.0
+            )
+
+        inventory = self.inventories[key]
+
+        if inventory.quantity + quantity > inventory.capacity:
+            raise ValueError(
+                f"Inventory capacity exceeded for "
+                f"{owner_id}/{commodity_id}"
+            )
+
+        inventory.quantity += quantity
+
     def add_bank(self, bank: Bank):
         self.banks[bank.id] = bank
 
@@ -38,19 +91,88 @@ class World:
 
     def run_tick(self):
         self.tick_number += 1
-        self.current_hour += HOURS_PER_TICK
+
+        for _ in range(7):
+            self.run_day()
 
         self._production_phase()
         self._trade_phase()
         self._finance_phase()
         self._nation_phase()
 
+    def run_day(self):
+        self.day_number += 1
+        self.current_hour += 24
+        self._market_phase()
+
+    def _market_phase(self):
+        for market in self.markets.values():
+            # crude sentiment proxy: recent blockades/strikes raise volatility
+            recent_shock = any(
+                e.timestamp_hours >= self.current_hour - 24 and not e.applied is False
+                for e in self.events
+            )
+            if recent_shock:
+                market.volatility_index += 5.0
+                market.index_value *= 0.98  # 2% daily drop on shock days
+            else:
+                market.volatility_index = max(10.0, market.volatility_index * 0.95)  # decay toward baseline
+                market.index_value *= 1.001  # small daily drift up, placeholder
+
+    def remove_inventory(
+        self,
+        owner_id: str,
+        commodity_id: str,
+        quantity: float
+    ):
+        key = (owner_id, commodity_id)
+
+        if key not in self.inventories:
+            raise ValueError(
+                f"No inventory exists for "
+                f"{owner_id}/{commodity_id}"
+            )
+
+        inventory = self.inventories[key]
+
+        if inventory.quantity < quantity:
+            raise ValueError(
+                f"Not enough {commodity_id} in inventory "
+                f"for {owner_id}"
+            )
+
+        inventory.quantity -= quantity
+
+    def get_inventory_quantity(
+        self,
+        owner_id: str,
+        commodity_id: str
+    ) -> float:
+
+        key = (owner_id, commodity_id)
+
+        if key not in self.inventories:
+            return 0.0
+
+        return self.inventories[key].quantity
+
     def _production_phase(self):
-        for company in self.companies.values():
-            company.current_output = company.production_capacity
-            revenue = company.current_output * 50  # placeholder price per unit
-            company.cash += revenue
-            company.cash -= company.wage_cost_per_tick
+
+        for facility in self.production_facilities.values():
+
+            produced = produce(
+                facility,
+                self
+            )
+
+            if produced > 0:
+
+                company = self.companies.get(
+                    facility.company_id
+                )
+
+                if company:
+                    company.current_output = produced
 
     def _finance_phase(self):
         for loan in self.loans.values():
