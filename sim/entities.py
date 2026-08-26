@@ -29,12 +29,14 @@ class Bank(BaseModel):
 
 class Loan(BaseModel):
     id: str
-    lender_id: str  # Bank id
-    borrower_id: str  # Company or Nation id
+    lender_id: str
+    borrower_id: str
     principal: float
     remaining_balance: float
     interest_rate: float  # per-tick rate
-    status: str = "active"  # "active", "defaulted", "paid_off"
+    term_ticks: int  # how many ticks to pay it off
+    ticks_elapsed: int = 0
+    status: str = "active"
 
 class Event(BaseModel):
     id: str

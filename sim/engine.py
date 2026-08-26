@@ -41,9 +41,6 @@ class World:
         self.current_hour += HOURS_PER_TICK
 
         self._production_phase()
-        self._finance_phase()
-        self._nation_phase()
-        self._production_phase()
         self._trade_phase()
         self._finance_phase()
         self._nation_phase()
@@ -59,19 +56,31 @@ class World:
         for loan in self.loans.values():
             if loan.status != "active":
                 continue
+
             interest = loan.remaining_balance * loan.interest_rate
-            loan.remaining_balance += interest
+            principal_due = loan.principal / loan.term_ticks
+            payment_due = interest + principal_due
 
             borrower = self.companies.get(loan.borrower_id)
-            if borrower and borrower.cash >= interest:
-                borrower.cash -= interest
-                loan.remaining_balance -= interest
-                bank = self.banks.get(loan.lender_id)
+            bank = self.banks.get(loan.lender_id)
+
+            if borrower and borrower.cash >= payment_due:
+                borrower.cash -= payment_due
+                loan.remaining_balance -= principal_due
                 if bank:
-                    bank.reserves += interest
+                    bank.reserves += payment_due
             elif borrower:
-                # can't pay interest this tick — balance keeps growing, flag risk later
-                pass
+                # can't cover full payment — pay interest only if possible, else default risk
+                if borrower.cash >= interest:
+                    borrower.cash -= interest
+                    if bank:
+                        bank.reserves += interest
+                # else: missed payment entirely — we'll add default handling later
+
+            loan.ticks_elapsed += 1
+            if loan.remaining_balance <= 0:
+                loan.remaining_balance = 0.0
+                loan.status = "paid_off"
 
     def _nation_phase(self):
         for nation in self.nations.values():
@@ -93,7 +102,7 @@ class World:
                 company.production_capacity *= 0.5  # halve capacity, placeholder severity
 
         event.applied = True
-        
+
     def _trade_phase(self):
         for route in self.routes.values():
             if route.status == "blockaded":

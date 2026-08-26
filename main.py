@@ -33,6 +33,7 @@ loan_1 = Loan(
     principal=20_000,
     remaining_balance=20_000,
     interest_rate=0.01,
+    term_ticks=52,
 )
 
 iran = Nation(
@@ -77,6 +78,7 @@ print("\n--- After tick 1 ---")
 print(oil_co)
 print(first_bank)
 print(usa)
+print(loan_1)
 
 strike = Event(
     id="E1",
@@ -93,6 +95,7 @@ print(oil_co)
 world.run_tick()
 print("\n--- Route state after tick 2 ---")
 print(hormuz_route)
+print(loan_1)
 
 # simulate a blockade event
 hormuz_route.risk_level = 1.0
