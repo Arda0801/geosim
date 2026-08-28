@@ -105,11 +105,12 @@ class World:
     def run_tick(self):
         self.tick_number += 1
 
+        self._production_phase()
+        self._trade_phase()
+
         for _ in range(7):
             self.run_day()
 
-        self._production_phase()
-        self._trade_phase()
         self._finance_phase()
         self._nation_phase()
         self._population_growth_phase()
