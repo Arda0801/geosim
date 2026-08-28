@@ -51,7 +51,9 @@ class Region(BaseModel):
     name: str
     owner_nation_id: str
     is_port: bool = False
-    storage_capacity: float = 100_000.0  # total across all commodities, placeholder
+    storage_capacity: float = 100_000.0
+    population: float = 0.0
+    growth_rate: float = 0.0  # per-tick fractional growth, e.g. 0.0004 for ~2%/year at weekly ticks
 
 class ShippingRoute(BaseModel):
     id: str
@@ -74,12 +76,12 @@ class Commodity(BaseModel):
     id: str
     name: str
     unit: str
-    current_price: float = 10.0  # placeholder baseline
+    current_price: float = 10.0
+    per_capita_daily_demand: float = 0.0  # units/person/day, 0 = not a population-demanded good
 
 class DemandProfile(BaseModel):
     nation_id: str
     commodity_id: str
-    daily_demand: float  # units consumed per day, baseline
 
 class Inventory(BaseModel):
     owner_id: str

@@ -195,7 +195,12 @@ print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
 
 refinery.operational = True
 
-usa_fuel_demand = DemandProfile(nation_id="USA", commodity_id="fuel", daily_demand=50)
+port_usa.population = 2_300_000  # rough Houston metro, placeholder
+port_usa.growth_rate = 0.0004
+
+fuel.per_capita_daily_demand = 0.0005  # tune later against real per-capita fuel consumption data
+
+usa_fuel_demand = DemandProfile(nation_id="USA", commodity_id="fuel")
 world.add_demand_profile(usa_fuel_demand)
 
 print("\n--- Fuel price before demand test ---")
@@ -207,3 +212,16 @@ world.run_tick()
 print("\n--- Fuel price after one tick (7 days of demand) ---")
 print("Fuel price:", fuel.current_price)
 print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
+
+usa_fuel_demand = DemandProfile(nation_id="USA", commodity_id="fuel")
+
+world.run_tick()
+
+print("\n--- Fuel price after scarcity tick ---")
+print("Fuel price:", fuel.current_price)
+print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
+
+print("\n--- Population growth check ---")
+print("PORT_USA population before:", port_usa.population)
+world.run_tick()
+print("PORT_USA population after:", port_usa.population)

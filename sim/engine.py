@@ -61,6 +61,10 @@ class World:
     def add_production_facility(self, facility: ProductionFacility):
         self.production_facilities[facility.id] = facility
 
+    def _population_growth_phase(self):
+        for region in self.regions.values():
+            region.population *= (1 + region.growth_rate)
+
     def add_inventory(
         self,
         owner_id: str,
@@ -108,6 +112,7 @@ class World:
         self._trade_phase()
         self._finance_phase()
         self._nation_phase()
+        self._population_growth_phase()
 
     def run_hour(self):
         self.hour_number += 1
@@ -181,38 +186,46 @@ class World:
 
     def _demand_and_pricing_phase(self):
         for profile in self.demand_profiles:
+            commodity = self.commodities.get(profile.commodity_id)
+            if not commodity:
+                continue
+
             nation_regions = [
-                r.id for r in self.regions.values()
+                r for r in self.regions.values()
                 if r.owner_nation_id == profile.nation_id
             ]
 
-            total_available = sum(
-                self.get_inventory_quantity(region_id, profile.commodity_id)
-                for region_id in nation_regions
+            total_daily_demand = sum(
+                r.population * commodity.per_capita_daily_demand
+                for r in nation_regions
             )
 
-            demand_met = min(profile.daily_demand, total_available)
+            if total_daily_demand <= 0:
+                continue
+
+            total_available = sum(
+                self.get_inventory_quantity(r.id, profile.commodity_id)
+                for r in nation_regions
+            )
+
+            demand_met = min(total_daily_demand, total_available)
             remaining_to_consume = demand_met
 
-            for region_id in nation_regions:
+            for region in nation_regions:
                 if remaining_to_consume <= 0:
                     break
-                available_here = self.get_inventory_quantity(region_id, profile.commodity_id)
+                available_here = self.get_inventory_quantity(region.id, profile.commodity_id)
                 take = min(available_here, remaining_to_consume)
                 if take > 0:
-                    self.remove_inventory(region_id, profile.commodity_id, take)
+                    self.remove_inventory(region.id, profile.commodity_id, take)
                     remaining_to_consume -= take
 
-            commodity = self.commodities.get(profile.commodity_id)
-            if commodity and profile.daily_demand > 0:
-                fulfillment_ratio = demand_met / profile.daily_demand
-                if fulfillment_ratio < 1.0:
-                    # scarcity: price rises, sharper as fulfillment drops further
-                    shortage = 1.0 - fulfillment_ratio
-                    commodity.current_price *= (1 + shortage * 0.1)
-                else:
-                    # surplus: price drifts down slightly toward baseline
-                    commodity.current_price *= 0.999
+            fulfillment_ratio = demand_met / total_daily_demand
+            if fulfillment_ratio < 1.0:
+                shortage = 1.0 - fulfillment_ratio
+                commodity.current_price *= (1 + shortage * 0.1)
+            else:
+                commodity.current_price *= 0.999
 
     def get_region_storage_used(self, region_id: str) -> float:
         return sum(
