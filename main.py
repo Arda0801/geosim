@@ -129,7 +129,6 @@ world.add_loan(loan_1)
 world.add_market(usa_market)
 world.add_commodity(oil)
 world.add_commodity(fuel)
-world.add_inventory("OILCO", "crude_oil", 50000)
 world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
 
@@ -155,3 +154,12 @@ world.run_tick()
 print("\n--- After blockaded shipping tick (should be unchanged) ---")
 print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
 print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+
+hormuz_route.status = "open"
+hormuz_route.risk_level = 0.0
+
+world.run_tick()  # ship more crude in, unblockaded
+
+print("\n--- Fuel produced from shipped crude ---")
+print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
