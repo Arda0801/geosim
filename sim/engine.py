@@ -19,6 +19,8 @@ HOURS_PER_TICK = 24 * 7  # 1 tick = 1 week
 
 class World:
     def __init__(self):
+        self.hour_number = 0
+        self.active_military_entities: set[str] = set()  # ids of units/sieges currently needing hourly resolution
         self.current_hour = 0
         self.tick_number = 0
         self.nations: dict[str, Nation] = {}
@@ -100,9 +102,22 @@ class World:
         self._finance_phase()
         self._nation_phase()
 
+    def run_hour(self):
+        self.hour_number += 1
+        self.current_hour += 1
+        self._hourly_phase()
+
+    def _hourly_phase(self):
+        # Only entities actively engaged in movement/combat/siege get evaluated.
+        # Empty for now — Phase 4 will populate active_military_entities and
+        # resolve movement/combat here.
+        for entity_id in self.active_military_entities:
+            pass
+
     def run_day(self):
         self.day_number += 1
-        self.current_hour += 24
+        for _ in range(24):
+            self.run_hour()
         self._market_phase()
 
     def _market_phase(self):
