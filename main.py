@@ -142,3 +142,16 @@ world.run_tick()
 print("\n--- After shipping tick ---")
 print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
 print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+
+hormuz_route.status = "blockaded"
+hormuz_route.risk_level = 1.0
+
+print("\n--- Before blockaded shipping tick ---")
+print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
+print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+
+world.run_tick()
+
+print("\n--- After blockaded shipping tick (should be unchanged) ---")
+print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
+print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
