@@ -133,6 +133,10 @@ world.add_commodity(fuel)
 world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
 
+print("\n--- OILCO cash before any production ---")
+print("Cash:", oil_co.cash)
+print("Fuel price:", fuel.current_price)
+
 print("\n--- Before shipping tick ---")
 print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
 print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
@@ -142,6 +146,9 @@ world.run_tick()
 print("\n--- After shipping tick ---")
 print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
 print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+
+print("\n--- OILCO cash after first tick (should reflect fuel sale) ---")
+print("Cash:", oil_co.cash)
 
 hormuz_route.status = "blockaded"
 hormuz_route.risk_level = 1.0
@@ -164,6 +171,16 @@ world.run_tick()  # ship more crude in, unblockaded
 print("\n--- Fuel produced from shipped crude ---")
 print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
 print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
+
+print("\n--- OILCO cash before a real fuel-selling tick ---")
+print("Cash:", oil_co.cash)
+print("Fuel price:", fuel.current_price)
+print("PORT_USA crude available:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+
+world.run_tick()
+
+print("\n--- OILCO cash after tick (should include fuel revenue if crude was available) ---")
+print("Cash:", oil_co.cash)
 
 print("\n--- Storage Artifically Inflated ---")
 port_usa.storage_capacity = 1200.0  # deliberately tight, to test the cap

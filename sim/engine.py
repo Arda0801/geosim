@@ -236,22 +236,32 @@ class World:
         )
 
     def _production_phase(self):
-
         for facility in self.production_facilities.values():
+            produced = produce(facility, self)
 
-            produced = produce(
-                facility,
-                self
-            )
+            company = self.companies.get(facility.company_id)
+            if not company:
+                continue
 
             if produced > 0:
+                company.current_output = produced
 
-                company = self.companies.get(
-                    facility.company_id
-                )
+            # Sell whatever this facility just added to its region's inventory
+            for commodity_id, output_per_unit in facility.outputs.items():
+                commodity = self.commodities.get(commodity_id)
+                if not commodity:
+                    continue
 
-                if company:
-                    company.current_output = produced
+                amount_produced = produced * output_per_unit
+                if amount_produced <= 0:
+                    continue
+
+                revenue = amount_produced * commodity.current_price
+                company.cash += revenue
+
+                self.remove_inventory(facility.region_id, commodity_id, amount_produced)
+
+            company.cash -= company.wage_cost_per_tick
 
     def _finance_phase(self):
         for loan in self.loans.values():
