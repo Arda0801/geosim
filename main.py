@@ -132,6 +132,7 @@ world.add_commodity(fuel)
 world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
 
+
 print("\n--- Before shipping tick ---")
 print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
 print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
@@ -163,3 +164,33 @@ world.run_tick()  # ship more crude in, unblockaded
 print("\n--- Fuel produced from shipped crude ---")
 print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
 print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
+
+print("\n--- Storage Artifically Inflated ---")
+port_usa.storage_capacity = 1200.0  # deliberately tight, to test the cap
+
+print("\n--- Storage capacity test ---")
+print("PORT_USA storage capacity:", port_usa.storage_capacity)
+print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
+
+world.run_tick()  # try to ship another 1000 crude in, should partially/fully block on capacity
+
+print("\n--- After tick with tight storage cap ---")
+print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
+print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
+print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
+
+refinery.operational = False
+
+print("\n--- Storage capacity test (refinery disabled) ---")
+print("PORT_USA storage capacity:", port_usa.storage_capacity)
+print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
+
+world.run_tick()
+
+print("\n--- After tick, refinery still offline ---")
+print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
+print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
+
+refinery.operational = True
