@@ -10,6 +10,7 @@ from sim.entities import (
     Commodity,
     Inventory,
     ProductionFacility,
+    Shipment
 )
 
 from sim.systems.production import produce
@@ -35,6 +36,7 @@ class World:
         self.commodities: dict[str, Commodity] = {}
         self.inventories: dict[tuple[str, str], Inventory] = {}
         self.production_facilities: dict[str, ProductionFacility] = {}
+        self.shipments: dict[str, Shipment] = {}
 
     def add_market(self, market: Market):
         self.markets[market.id] = market
@@ -171,6 +173,13 @@ class World:
 
         return self.inventories[key].quantity
 
+    def get_region_storage_used(self, region_id: str) -> float:
+        return sum(
+            inv.quantity
+            for (owner_id, _), inv in self.inventories.items()
+            if owner_id == region_id
+        )
+
     def _production_phase(self):
 
         for facility in self.production_facilities.values():
@@ -244,9 +253,38 @@ class World:
         for route in self.routes.values():
             if route.status == "blockaded":
                 route.current_flow = 0.0
-                route.current_cost = route.base_cost * 3  # blockade risk premium, placeholder
+                route.current_cost = route.base_cost * 3
                 continue
+
             effective_capacity = route.capacity * (1 - route.risk_level)
             effective_cost = route.base_cost * (1 + route.risk_level * 2)
             route.current_flow = effective_capacity
             route.current_cost = effective_cost
+
+            # Try to ship whatever commodities are available at origin, up to capacity
+            origin = route.origin_region_id
+            destination = route.destination_region_id
+
+            dest_region = self.regions.get(destination)
+            if not dest_region:
+                continue
+
+            dest_used = self.get_region_storage_used(destination)
+            dest_free = dest_region.storage_capacity - dest_used
+
+            for (owner_id, commodity_id), inv in list(self.inventories.items()):
+                if owner_id != origin:
+                    continue
+
+                shippable = min(inv.quantity, effective_capacity, dest_free)
+                if shippable <= 0:
+                    continue
+
+                self.remove_inventory(origin, commodity_id, shippable)
+                self.add_inventory(destination, commodity_id, shippable)
+
+                dest_free -= shippable
+                effective_capacity -= shippable
+
+                if effective_capacity <= 0:
+                    break

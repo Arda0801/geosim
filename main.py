@@ -10,6 +10,7 @@ from sim.entities import (
     Commodity,
     Inventory,
     ProductionFacility,
+    Shipment
 )
 
 from sim.systems.production import produce
@@ -130,118 +131,14 @@ world.add_commodity(oil)
 world.add_commodity(fuel)
 world.add_inventory("OILCO", "crude_oil", 50000)
 world.add_production_facility(refinery)
+world.add_inventory("PORT_IRN", "crude_oil", 5000)
 
-print("\n--- Initial inventories ---")
-
-print(
-    "Crude:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "crude_oil"
-    )
-)
-
-print(
-    "Fuel:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "fuel"
-    )
-)
+print("\n--- Before shipping tick ---")
+print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
+print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
 
 world.run_tick()
 
-print("\n--- After production tick ---")
-
-print(
-    "Crude:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "crude_oil"
-    )
-)
-
-print(
-    "Fuel:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "fuel"
-    )
-)
-
-world.run_tick()
-print("\n--- After second production tick ---")
-refinery.operational = False
-
-print(
-    "Crude:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "crude_oil"
-    )
-)
-
-print(
-    "Fuel:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "fuel"
-    )
-)
-
-world.run_tick()
-print("\n--- After third production tick (refinery offline) ---")
-
-print(
-    "Crude:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "crude_oil"
-    )
-)
-
-print(
-    "Fuel:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "fuel"
-    )
-)
-
-world.run_tick()
-print("\n--- After fourth production tick (refinery offline) ---")
-refinery.operational = True
-
-print(
-    "Crude:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "crude_oil"
-    )
-)
-
-print(
-    "Fuel:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "fuel"
-    )
-)
-
-world.run_tick()
-print("\n--- After fifth production tick (refinery back online) ---")
-print(
-    "Crude:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "crude_oil"
-    )
-)
-
-print(
-    "Fuel:",
-    world.get_inventory_quantity(
-        "OILCO",
-        "fuel"
-    )
-)
+print("\n--- After shipping tick ---")
+print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
+print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))

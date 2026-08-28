@@ -51,6 +51,7 @@ class Region(BaseModel):
     name: str
     owner_nation_id: str
     is_port: bool = False
+    storage_capacity: float = 100_000.0  # total across all commodities, placeholder
 
 class ShippingRoute(BaseModel):
     id: str
@@ -92,3 +93,12 @@ class ProductionFacility(BaseModel):
     efficiency: float = 1.0
 
     operational: bool = True
+
+class Shipment(BaseModel):
+    id: str
+    route_id: str
+    commodity_id: str
+    quantity: float
+    origin_region_id: str
+    destination_region_id: str
+    status: str = "in_transit"  # "in_transit", "delivered", "lost"
