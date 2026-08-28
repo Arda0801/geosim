@@ -1,4 +1,5 @@
 from sim.entities import (
+    DemandProfile,
     Nation,
     Company,
     Bank,
@@ -132,7 +133,6 @@ world.add_commodity(fuel)
 world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
 
-
 print("\n--- Before shipping tick ---")
 print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
 print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
@@ -194,3 +194,16 @@ print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
 print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
 
 refinery.operational = True
+
+usa_fuel_demand = DemandProfile(nation_id="USA", commodity_id="fuel", daily_demand=50)
+world.add_demand_profile(usa_fuel_demand)
+
+print("\n--- Fuel price before demand test ---")
+print("Fuel price:", fuel.current_price)
+print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
+
+world.run_tick()
+
+print("\n--- Fuel price after one tick (7 days of demand) ---")
+print("Fuel price:", fuel.current_price)
+print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))

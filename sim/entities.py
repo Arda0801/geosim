@@ -74,6 +74,12 @@ class Commodity(BaseModel):
     id: str
     name: str
     unit: str
+    current_price: float = 10.0  # placeholder baseline
+
+class DemandProfile(BaseModel):
+    nation_id: str
+    commodity_id: str
+    daily_demand: float  # units consumed per day, baseline
 
 class Inventory(BaseModel):
     owner_id: str
