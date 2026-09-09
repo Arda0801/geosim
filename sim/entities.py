@@ -55,6 +55,13 @@ class Region(BaseModel):
     population: float = 0.0
     growth_rate: float = 0.0  # per-tick fractional growth, e.g. 0.0004 for ~2%/year at weekly ticks
 
+class District(BaseModel):
+    id: str
+    region_id: str
+    name: str
+    control: dict[str, float] = {}  # nation_id -> control value 0.0-1.0, should sum to ~1.0 across contestants
+    population: float = 0.0
+
 class ShippingRoute(BaseModel):
     id: str
     origin_region_id: str

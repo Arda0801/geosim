@@ -11,7 +11,8 @@ from sim.entities import (
     Inventory,
     ProductionFacility,
     Shipment,
-    DemandProfile
+    DemandProfile,
+    District,
 )
 
 from sim.systems.production import produce
@@ -39,12 +40,16 @@ class World:
         self.production_facilities: dict[str, ProductionFacility] = {}
         self.shipments: dict[str, Shipment] = {}
         self.demand_profiles: list[DemandProfile] = []
+        self.districts: dict[str, District] = {}
 
     def add_market(self, market: Market):
         self.markets[market.id] = market
 
     def add_region(self, region: Region):
         self.regions[region.id] = region
+
+    def add_district(self, district: District):
+        self.districts[district.id] = district
 
     def add_route(self, route: ShippingRoute):
         self.routes[route.id] = route
@@ -234,6 +239,12 @@ class World:
             for (owner_id, _), inv in self.inventories.items()
             if owner_id == region_id
         )
+
+    def get_dominant_controller(self, district_id: str) -> str | None:
+        district = self.districts.get(district_id)
+        if not district or not district.control:
+            return None
+        return max(district.control, key=district.control.get)
 
     def _production_phase(self):
         for facility in self.production_facilities.values():

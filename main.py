@@ -11,7 +11,8 @@ from sim.entities import (
     Commodity,
     Inventory,
     ProductionFacility,
-    Shipment
+    Shipment,
+    District,
 )
 
 from sim.systems.production import produce
@@ -107,6 +108,9 @@ iran = Nation(
 port_usa = Region(id="PORT_USA", name="Port of Houston", owner_nation_id="USA", is_port=True)
 port_iran = Region(id="PORT_IRN", name="Port of Bandar Abbas", owner_nation_id="IRN", is_port=True)
 usa_market = Market(id="NYSE", nation_id="USA")
+district_a = District(id="HOUSTON_DOWNTOWN", region_id="PORT_USA", name="Downtown", control={"USA": 1.0})
+district_b = District(id="HOUSTON_PORT", region_id="PORT_USA", name="Port District", control={"USA": 0.6, "IRN": 0.4})
+
 
 hormuz_route = ShippingRoute(
     id="R_HORMUZ",
@@ -132,6 +136,8 @@ world.add_commodity(oil)
 world.add_commodity(fuel)
 world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
+world.add_district(district_a)
+world.add_district(district_b)
 
 print("\n--- OILCO cash before any production ---")
 print("Cash:", oil_co.cash)
@@ -242,3 +248,8 @@ print("\n--- Population growth check ---")
 print("PORT_USA population before:", port_usa.population)
 world.run_tick()
 print("PORT_USA population after:", port_usa.population)
+
+print("\n--- District control test ---")
+print("Downtown controller:", world.get_dominant_controller("HOUSTON_DOWNTOWN"))
+print("Port District controller:", world.get_dominant_controller("HOUSTON_PORT"))
+print("Port District raw control:", district_b.control)
