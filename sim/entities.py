@@ -59,8 +59,20 @@ class District(BaseModel):
     id: str
     region_id: str
     name: str
-    control: dict[str, float] = {}  # nation_id -> control value 0.0-1.0, should sum to ~1.0 across contestants
+    control: dict[str, float] = {}
     population: float = 0.0
+    terrain_defense_multiplier: float = 1.0  # >1.0 favors defender (urban, mountainous)
+    contested: bool = False  # true when actively being fought over
+
+class Siege(BaseModel):
+    id: str
+    district_id: str
+    attacker_nation_id: str
+    defender_nation_id: str
+    attacker_committed_force: float
+    attacker_morale: float = 1.0
+    defender_morale: float = 1.0
+    status: str = "active"  # "active", "resolved_attacker", "resolved_defender", "stalemate"
 
 class ShippingRoute(BaseModel):
     id: str

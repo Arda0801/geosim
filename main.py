@@ -13,6 +13,7 @@ from sim.entities import (
     ProductionFacility,
     Shipment,
     District,
+    Siege,
 )
 
 from sim.systems.production import produce
@@ -110,7 +111,17 @@ port_iran = Region(id="PORT_IRN", name="Port of Bandar Abbas", owner_nation_id="
 usa_market = Market(id="NYSE", nation_id="USA")
 district_a = District(id="HOUSTON_DOWNTOWN", region_id="PORT_USA", name="Downtown", control={"USA": 1.0})
 district_b = District(id="HOUSTON_PORT", region_id="PORT_USA", name="Port District", control={"USA": 0.6, "IRN": 0.4})
+district_b.terrain_defense_multiplier = 2.5  # urban, heavily fortified
+district_b.control = {"IRN": 0.9, "USA": 0.1}  # Iran holds it, USA attacking
 
+mosul_siege = Siege(
+    id="SIEGE_1",
+    district_id="HOUSTON_PORT",
+    attacker_nation_id="USA",
+    defender_nation_id="IRN",
+    attacker_committed_force=50.0,
+    defender_morale=1.3,  # fanatically motivated defenders
+)
 
 hormuz_route = ShippingRoute(
     id="R_HORMUZ",
@@ -138,83 +149,39 @@ world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
 world.add_district(district_a)
 world.add_district(district_b)
+world.add_siege(mosul_siege)
 
-print("\n--- OILCO cash before any production ---")
-print("Cash:", oil_co.cash)
-print("Fuel price:", fuel.current_price)
+print("\n--- Siege day 1 ---")
+print("Control:", district_b.control)
 
-print("\n--- Before shipping tick ---")
-print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
-print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
+for _ in range(30):
+    world.run_day()
+
+print("\n--- Siege after 30 days ---")
+print("Control:", district_b.control)
+print("Status:", mosul_siege.status)
 
 world.run_tick()
-
-print("\n--- After shipping tick ---")
-print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
-print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
-
-print("\n--- OILCO cash after first tick (should reflect fuel sale) ---")
-print("Cash:", oil_co.cash)
 
 hormuz_route.status = "blockaded"
 hormuz_route.risk_level = 1.0
 
-print("\n--- Before blockaded shipping tick ---")
-print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
-print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
-
 world.run_tick()
-
-print("\n--- After blockaded shipping tick (should be unchanged) ---")
-print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
-print("USA port crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
 
 hormuz_route.status = "open"
 hormuz_route.risk_level = 0.0
 
 world.run_tick()  # ship more crude in, unblockaded
 
-print("\n--- Fuel produced from shipped crude ---")
-print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
-print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
-
-print("\n--- OILCO cash before a real fuel-selling tick ---")
-print("Cash:", oil_co.cash)
-print("Fuel price:", fuel.current_price)
-print("PORT_USA crude available:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
-
 world.run_tick()
 
-print("\n--- OILCO cash after tick (should include fuel revenue if crude was available) ---")
-print("Cash:", oil_co.cash)
-
-print("\n--- Storage Artifically Inflated ---")
 port_usa.storage_capacity = 1200.0  # deliberately tight, to test the cap
-
-print("\n--- Storage capacity test ---")
-print("PORT_USA storage capacity:", port_usa.storage_capacity)
-print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
 
 world.run_tick()  # try to ship another 1000 crude in, should partially/fully block on capacity
 
-print("\n--- After tick with tight storage cap ---")
-print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
-print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
-print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
-print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
-
 refinery.operational = False
 
-print("\n--- Storage capacity test (refinery disabled) ---")
-print("PORT_USA storage capacity:", port_usa.storage_capacity)
-print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
-
 world.run_tick()
-
-print("\n--- After tick, refinery still offline ---")
-print("Iran port crude:", world.get_inventory_quantity("PORT_IRN", "crude_oil"))
-print("PORT_USA crude:", world.get_inventory_quantity("PORT_USA", "crude_oil"))
-print("PORT_USA storage used:", world.get_region_storage_used("PORT_USA"))
 
 refinery.operational = True
 
@@ -226,30 +193,10 @@ fuel.per_capita_daily_demand = 0.0005  # tune later against real per-capita fuel
 usa_fuel_demand = DemandProfile(nation_id="USA", commodity_id="fuel")
 world.add_demand_profile(usa_fuel_demand)
 
-print("\n--- Fuel price before demand test ---")
-print("Fuel price:", fuel.current_price)
-print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
-
 world.run_tick()
-
-print("\n--- Fuel price after one tick (7 days of demand) ---")
-print("Fuel price:", fuel.current_price)
-print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
 
 usa_fuel_demand = DemandProfile(nation_id="USA", commodity_id="fuel")
 
 world.run_tick()
 
-print("\n--- Fuel price after scarcity tick ---")
-print("Fuel price:", fuel.current_price)
-print("PORT_USA fuel:", world.get_inventory_quantity("PORT_USA", "fuel"))
-
-print("\n--- Population growth check ---")
-print("PORT_USA population before:", port_usa.population)
 world.run_tick()
-print("PORT_USA population after:", port_usa.population)
-
-print("\n--- District control test ---")
-print("Downtown controller:", world.get_dominant_controller("HOUSTON_DOWNTOWN"))
-print("Port District controller:", world.get_dominant_controller("HOUSTON_PORT"))
-print("Port District raw control:", district_b.control)

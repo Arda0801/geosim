@@ -13,6 +13,7 @@ from sim.entities import (
     Shipment,
     DemandProfile,
     District,
+    Siege,
 )
 
 from sim.systems.production import produce
@@ -41,6 +42,7 @@ class World:
         self.shipments: dict[str, Shipment] = {}
         self.demand_profiles: list[DemandProfile] = []
         self.districts: dict[str, District] = {}
+        self.sieges: dict[str, Siege] = {}
 
     def add_market(self, market: Market):
         self.markets[market.id] = market
@@ -69,6 +71,48 @@ class World:
     def _population_growth_phase(self):
         for region in self.regions.values():
             region.population *= (1 + region.growth_rate)
+
+    def add_siege(self, siege: Siege):
+        self.sieges[siege.id] = siege
+        district = self.districts.get(siege.district_id)
+        if district:
+            district.contested = True
+
+    def _siege_phase(self):
+        for siege in self.sieges.values():
+            if siege.status != "active":
+                continue
+
+            district = self.districts.get(siege.district_id)
+            if not district:
+                continue
+
+            defender_control = district.control.get(siege.defender_nation_id, 0.0)
+            attacker_control = district.control.get(siege.attacker_nation_id, 0.0)
+
+            effective_attack = (
+                siege.attacker_committed_force
+                * siege.attacker_morale
+            )
+            effective_defense = (
+                defender_control
+                * district.terrain_defense_multiplier
+                * siege.defender_morale
+                * 100  # scaling factor so control (0-1) is comparable to raw force numbers
+            )
+
+            if effective_attack <= 0:
+                continue
+
+            # control shifts proportionally to how much attack overwhelms defense
+            shift = min(0.02, effective_attack / (effective_attack + effective_defense) * 0.05)
+
+            district.control[siege.attacker_nation_id] = attacker_control + shift
+            district.control[siege.defender_nation_id] = max(0.0, defender_control - shift)
+
+            if district.control[siege.defender_nation_id] <= 0.01:
+                siege.status = "resolved_attacker"
+                district.contested = False
 
     def add_inventory(
         self,
@@ -136,6 +180,7 @@ class World:
         self.day_number += 1
         for _ in range(24):
             self.run_hour()
+        self._siege_phase()
         self._demand_and_pricing_phase()
         self._market_phase()
 
