@@ -14,12 +14,18 @@ from sim.entities import (
     DemandProfile,
     District,
     Siege,
+    Transaction,
 )
 from sim.systems.accounting import (
     record_sale, 
     close_books,
     open_books,
     charge_for_inputs,
+)
+from sim.systems.government import (
+    collect_profit_tax,
+    government_spending_phase,
+    pay_debt_interest,
 )
 
 from sim.systems.production import produce
@@ -43,9 +49,10 @@ class World:
         self.markets: dict[str, Market] = {}
         self.day_number = 0
         self.commodities: dict[str, Commodity] = {}
-        self.inventories: dict[tuple[str, str], Inventory] = {}
+        self.inventories: dict[tuple[str, str, str], Inventory] = {}
         self.production_facilities: dict[str, ProductionFacility] = {}
         self.shipments: dict[str, Shipment] = {}
+        self.transactions: dict[str, Transaction] = {}
         self.demand_profiles: list[DemandProfile] = []
         self.districts: dict[str, District] = {}
         self.sieges: dict[str, Siege] = {}
@@ -148,24 +155,29 @@ class World:
         self,
         owner_id: str,
         commodity_id: str,
-        quantity: float
+        region_id: str | float,
+        quantity: float | None = None,
+        capacity: float = 100000,
     ):
-        key = (owner_id, commodity_id)
+        if quantity is None:
+            quantity = float(region_id)
+            region_id = owner_id
+
+        key = (owner_id, commodity_id, region_id)
 
         if key not in self.inventories:
             self.inventories[key] = Inventory(
                 owner_id=owner_id,
                 commodity_id=commodity_id,
-                quantity=0.0
+                region_id=region_id,
+                quantity=0.0,
+                capacity=capacity,
             )
 
         inventory = self.inventories[key]
 
         if inventory.quantity + quantity > inventory.capacity:
-            raise ValueError(
-                f"Inventory capacity exceeded for "
-                f"{owner_id}/{commodity_id}"
-            )
+            raise ValueError("Inventory capacity exceeded")
 
         inventory.quantity += quantity
 
@@ -174,6 +186,87 @@ class World:
 
     def add_loan(self, loan: Loan):
         self.loans[loan.id] = loan
+
+    def add_transaction(self, transaction: Transaction):
+        if transaction.id in self.transactions:
+            raise ValueError(
+                f"Transaction {transaction.id} already exists"
+            )
+
+        self.transactions[transaction.id] = transaction
+
+    def execute_transaction(
+        self,
+        transaction_id: str,
+        seller_id: str,
+        buyer_id: str,
+        commodity_id: str,
+        quantity: float,
+        price_per_unit: float,
+        region_id: str,
+    ) -> Transaction:
+
+        if quantity <= 0:
+            raise ValueError("Transaction quantity must be positive")
+
+        if price_per_unit < 0:
+            raise ValueError("Price cannot be negative")
+
+        if seller_id not in self.companies:
+            raise ValueError("Seller does not exist")
+
+        if buyer_id not in self.companies:
+            raise ValueError("Buyer does not exist")
+
+        seller = self.companies[seller_id]
+        buyer = self.companies[buyer_id]
+
+        total_value = quantity * price_per_unit
+
+        available = self.get_inventory_quantity(
+            seller_id,
+            commodity_id,
+            region_id,
+        )
+
+        if available < quantity:
+            raise ValueError("Seller has insufficient inventory")
+
+        if buyer.cash < total_value:
+            raise ValueError("Buyer has insufficient cash")
+
+        self.remove_inventory(
+            seller_id,
+            commodity_id,
+            region_id,
+            quantity,
+        )
+
+        self.add_inventory(
+            buyer_id,
+            commodity_id,
+            region_id,
+            quantity,
+        )
+
+        seller.cash += total_value
+        buyer.cash -= total_value
+
+        transaction = Transaction(
+            id=transaction_id,
+            seller_id=seller_id,
+            buyer_id=buyer_id,
+            commodity_id=commodity_id,
+            quantity=quantity,
+            price_per_unit=price_per_unit,
+            total_value=total_value,
+            timestamp_hours=self.current_hour,
+            status="completed",
+        )
+
+        self.add_transaction(transaction)
+
+        return transaction
 
     def add_demand_profile(self, profile: DemandProfile):
         self.demand_profiles.append(profile)
@@ -184,17 +277,14 @@ class World:
     def run_tick(self):
         self.tick_number += 1
         open_books(self)
-
         self._production_phase()
         self._trade_phase()
-
         for _ in range(7):
             self.run_day()
-
         self._finance_phase()
-        self._nation_phase()
         self._population_growth_phase()
         close_books(self)
+        self._government_finance_phase()
 
     def run_hour(self):
         self.hour_number += 1
@@ -234,38 +324,45 @@ class World:
         self,
         owner_id: str,
         commodity_id: str,
-        quantity: float
+        region_id: str | float,
+        quantity: float | None = None,
     ):
-        key = (owner_id, commodity_id)
+        if quantity is None:
+            quantity = float(region_id)
+            region_id = owner_id
 
-        if key not in self.inventories:
-            raise ValueError(
-                f"No inventory exists for "
-                f"{owner_id}/{commodity_id}"
-            )
+        if quantity < 0:
+            raise ValueError("Quantity cannot be negative")
 
-        inventory = self.inventories[key]
+        key = (owner_id, commodity_id, region_id)
+
+        inventory = self.inventories.get(key)
+
+        if inventory is None:
+            raise ValueError("Inventory does not exist")
 
         if inventory.quantity < quantity:
-            raise ValueError(
-                f"Not enough {commodity_id} in inventory "
-                f"for {owner_id}"
-            )
+            raise ValueError("Insufficient inventory")
 
         inventory.quantity -= quantity
 
     def get_inventory_quantity(
         self,
         owner_id: str,
-        commodity_id: str
+        commodity_id: str,
+        region_id: str | None = None,
     ) -> float:
+        if region_id is not None:
+            inventory = self.inventories.get((owner_id, commodity_id, region_id))
+            return inventory.quantity if inventory else 0.0
 
-        key = (owner_id, commodity_id)
-
-        if key not in self.inventories:
-            return 0.0
-
-        return self.inventories[key].quantity
+        return sum(
+            inventory.quantity
+            for (inventory_owner, inventory_commodity, inventory_region), inventory
+            in self.inventories.items()
+            if inventory_commodity == commodity_id
+            and inventory_region == owner_id
+        )
 
     def _demand_and_pricing_phase(self):
         for profile in self.demand_profiles:
@@ -297,12 +394,22 @@ class World:
             for region in nation_regions:
                 if remaining_to_consume <= 0:
                     break
-                available_here = self.get_inventory_quantity(region.id, profile.commodity_id)
-                take = min(available_here, remaining_to_consume)
-                if take > 0:
+                regional_inventories = [
+                    inventory
+                    for inventory in self.inventories.values()
+                    if inventory.region_id == region.id
+                    and inventory.commodity_id == profile.commodity_id
+                    and inventory.quantity > 0
+                ]
+                for inventory in regional_inventories:
+                    if remaining_to_consume <= 0:
+                        break
+                    take = min(inventory.quantity, remaining_to_consume)
                     producer = next(
                         (f for f in self.production_facilities.values()
-                         if f.region_id == region.id and profile.commodity_id in f.outputs),
+                         if f.region_id == region.id
+                         and f.company_id == inventory.owner_id
+                         and profile.commodity_id in f.outputs),
                         None
                     )
                     if producer:
@@ -310,7 +417,12 @@ class World:
                         if company:
                             record_sale(company, commodity, take)
 
-                    self.remove_inventory(region.id, profile.commodity_id, take)
+                    self.remove_inventory(
+                        inventory.owner_id,
+                        profile.commodity_id,
+                        region.id,
+                        take,
+                    )
                     remaining_to_consume -= take
 
             fulfillment_ratio = demand_met / total_daily_demand
@@ -323,9 +435,29 @@ class World:
     def get_region_storage_used(self, region_id: str) -> float:
         return sum(
             inv.quantity
-            for (owner_id, _), inv in self.inventories.items()
-            if owner_id == region_id
+            for (_, _, inventory_region), inv in self.inventories.items()
+            if inventory_region == region_id
         )
+
+    def get_inventories_in_region(
+        self,
+        region_id: str,
+        commodity_id: str | None = None,
+    ) -> list[Inventory]:
+        inventories = [
+            inventory
+            for inventory in self.inventories.values()
+            if inventory.region_id == region_id
+        ]
+
+        if commodity_id is not None:
+            inventories = [
+                inventory
+                for inventory in inventories
+                if inventory.commodity_id == commodity_id
+            ]
+
+        return inventories
 
     def get_dominant_controller(self, district_id: str) -> str | None:
         district = self.districts.get(district_id)
@@ -335,15 +467,30 @@ class World:
 
     def _production_phase(self):
         for facility in self.production_facilities.values():
-            produced = produce(facility, self)
-
-            company = self.companies.get(facility.company_id)
-            if not company:
+            if not facility.operational:
                 continue
 
-            if produced > 0:
-                company.current_output = produced
-                charge_for_inputs(facility, produced, self)
+            produced = produce(facility, self)
+
+            if produced <= 0:
+                continue
+
+            company = self.companies[facility.company_id]
+            company.current_output = produced
+            charge_for_inputs(facility, produced, self)
+
+            for commodity_id, amount_produced in facility.outputs.items():
+                if amount_produced <= 0:
+                    continue
+
+                amount_produced *= produced
+
+                self.add_inventory(
+                    owner_id=facility.company_id,
+                    commodity_id=commodity_id,
+                    region_id=facility.region_id,
+                    quantity=amount_produced,
+                )
 
             company.cash -= company.wage_cost_per_tick
             company.wage_costs_last_tick += company.wage_cost_per_tick
@@ -355,7 +502,7 @@ class World:
         for facility in self.production_facilities.values():
             needed_as_input.update(facility.inputs.keys())
 
-        for (owner_id, commodity_id), inv in list(self.inventories.items()):
+        for (owner_id, commodity_id, region_id), inv in list(self.inventories.items()):
             if commodity_id in needed_as_input:
                 continue  # something might still need this as an input, don't auto-sell it
 
@@ -367,7 +514,7 @@ class World:
             # sell on behalf of whichever company has a facility outputting this commodity here
             producer = next(
                 (f for f in self.production_facilities.values()
-                 if f.region_id == owner_id and commodity_id in f.outputs),
+                 if f.region_id == region_id and commodity_id in f.outputs),
                 None
             )
             if not producer:
@@ -378,7 +525,7 @@ class World:
                 continue
 
             record_sale(company, commodity, inv.quantity)
-            self.remove_inventory(owner_id, commodity_id, inv.quantity)
+            self.remove_inventory(owner_id, commodity_id, region_id, inv.quantity)
 
     def _finance_phase(self):
         for loan in self.loans.values():
@@ -411,17 +558,10 @@ class World:
                 loan.remaining_balance = 0.0
                 loan.status = "paid_off"
 
-    def _nation_phase(self):
-        for nation in self.nations.values():
-            nation_companies = [
-                c for c in self.companies.values()
-                if c.home_nation_id == nation.id
-            ]
-            for company in nation_companies:
-                tax = company.cash * nation.tax_rate * 0.01
-                company.cash -= tax
-                company.tax_paid_last_tick += tax
-                nation.treasury += tax
+    def _government_finance_phase(self):
+        collect_profit_tax(self)
+        government_spending_phase(self)
+        pay_debt_interest(self)
 
     def apply_event(self, event: Event):
         self.events.append(event)
@@ -456,16 +596,16 @@ class World:
             dest_used = self.get_region_storage_used(destination)
             dest_free = dest_region.storage_capacity - dest_used
 
-            for (owner_id, commodity_id), inv in list(self.inventories.items()):
-                if owner_id != origin:
+            for (owner_id, commodity_id, region_id), inv in list(self.inventories.items()):
+                if region_id != origin:
                     continue
 
                 shippable = min(inv.quantity, effective_capacity, dest_free)
                 if shippable <= 0:
                     continue
 
-                self.remove_inventory(origin, commodity_id, shippable)
-                self.add_inventory(destination, commodity_id, shippable)
+                self.remove_inventory(owner_id, commodity_id, origin, shippable)
+                self.add_inventory(owner_id, commodity_id, destination, shippable)
 
                 dest_free -= shippable
                 effective_capacity -= shippable

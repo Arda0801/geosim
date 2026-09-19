@@ -15,7 +15,7 @@ def produce(facility, world):
     for commodity_id, required_per_unit in facility.inputs.items():
         available = world.get_inventory_quantity(
             facility.region_id,
-            commodity_id
+            commodity_id,
         )
         if required_per_unit > 0:
             possible = available / required_per_unit
@@ -27,19 +27,20 @@ def produce(facility, world):
     # Consume inputs
     for commodity_id, required_per_unit in facility.inputs.items():
         amount_required = possible_production * required_per_unit
-        world.remove_inventory(
+        remaining = amount_required
+        for inventory in world.get_inventories_in_region(
             facility.region_id,
             commodity_id,
-            amount_required
-        )
-
-    # Produce outputs
-    for commodity_id, output_per_unit in facility.outputs.items():
-        amount_produced = possible_production * output_per_unit
-        world.add_inventory(
-            facility.region_id,
-            commodity_id,
-            amount_produced
-        )
+        ):
+            if remaining <= 0:
+                break
+            take = min(inventory.quantity, remaining)
+            world.remove_inventory(
+                inventory.owner_id,
+                commodity_id,
+                facility.region_id,
+                take,
+            )
+            remaining -= take
 
     return possible_production

@@ -9,6 +9,14 @@ class Nation(BaseModel):
     debt_total: float
     tax_rate: float  # e.g. 0.20 = 20%
     central_bank_rate: float  # e.g. 0.04 = 4%
+    # Government finance (new)
+    weekly_budget: float = 0.0  # baseline government spending per tick (military + social), placeholder
+    bond_interest_rate: float = 0.00003  # weekly yield on government bonds, placeholder
+    outstanding_bonds: float = 0.0  # total principal of bonds currently issued
+    bonds_issued_last_tick: float = 0.0  # how much was borrowed this tick (for debugging/tests)
+    interest_paid_last_tick: float = 0.0  # bond + legacy debt interest paid this tick
+    tax_collected_last_tick: float = 0.0  # total tax revenue this tick (for debugging/tests)
+    spending_last_tick: float = 0.0  # total spending this tick (for debugging/tests)
 
 class Company(BaseModel):
     id: str
@@ -115,8 +123,9 @@ class DemandProfile(BaseModel):
 class Inventory(BaseModel):
     owner_id: str
     commodity_id: str
+    region_id: str
     quantity: float = 0.0
-    capacity: float = float("inf")
+    capacity: float = 100000.0
 
 class ProductionFacility(BaseModel):
     id: str
@@ -139,3 +148,14 @@ class Shipment(BaseModel):
     origin_region_id: str
     destination_region_id: str
     status: str = "in_transit"  # "in_transit", "delivered", "lost"
+
+class Transaction(BaseModel):
+    id: str
+    seller_id: str
+    buyer_id: str
+    commodity_id: str
+    quantity: float
+    price_per_unit: float
+    total_value: float
+    timestamp_hours: int
+    status: str = "completed"
