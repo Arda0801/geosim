@@ -93,24 +93,48 @@ class World:
             if not district:
                 continue
 
+            # attacker must supply munitions from their own nation's regions to sustain the siege
+            attacker_regions = [
+                r for r in self.regions.values()
+                if r.owner_nation_id == siege.attacker_nation_id
+            ]
+            munitions_available = sum(
+                self.get_inventory_quantity(r.id, "munitions")
+                for r in attacker_regions
+            )
+
+            munitions_needed = siege.munitions_consumed_per_day
+            supply_ratio = min(1.0, munitions_available / munitions_needed) if munitions_needed > 0 else 1.0
+
+            remaining_to_consume = min(munitions_needed, munitions_available)
+            for region in attacker_regions:
+                if remaining_to_consume <= 0:
+                    break
+                available_here = self.get_inventory_quantity(region.id, "munitions")
+                take = min(available_here, remaining_to_consume)
+                if take > 0:
+                    self.remove_inventory(region.id, "munitions", take)
+                    remaining_to_consume -= take
+
             defender_control = district.control.get(siege.defender_nation_id, 0.0)
             attacker_control = district.control.get(siege.attacker_nation_id, 0.0)
 
+            # under-supplied sieges lose effectiveness proportionally
             effective_attack = (
                 siege.attacker_committed_force
                 * siege.attacker_morale
+                * supply_ratio
             )
             effective_defense = (
                 defender_control
                 * district.terrain_defense_multiplier
                 * siege.defender_morale
-                * 100  # scaling factor so control (0-1) is comparable to raw force numbers
+                * 100
             )
 
             if effective_attack <= 0:
                 continue
 
-            # control shifts proportionally to how much attack overwhelms defense
             shift = min(0.02, effective_attack / (effective_attack + effective_defense) * 0.05)
 
             district.control[siege.attacker_nation_id] = attacker_control + shift

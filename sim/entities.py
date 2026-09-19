@@ -81,7 +81,8 @@ class Siege(BaseModel):
     attacker_committed_force: float
     attacker_morale: float = 1.0
     defender_morale: float = 1.0
-    status: str = "active"  # "active", "resolved_attacker", "resolved_defender", "stalemate"
+    status: str = "active"
+    munitions_consumed_per_day: float = 5.0  # placeholder, tune later against real logistics data
 
 class ShippingRoute(BaseModel):
     id: str

@@ -16,6 +16,8 @@ class TestSiege(unittest.TestCase):
         )
         w.world.add_district(district)
 
+        w.world.add_inventory("PORT_USA", "munitions", 1000)
+
         siege = Siege(
             id="SIEGE_1",
             district_id="HOUSTON_PORT",

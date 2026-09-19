@@ -21,14 +21,6 @@ class TestFullEconomy(unittest.TestCase):
 
         w.world.run_tick()  # farm sells food to demand, refinery makes fuel (steel mill takes some, demand takes rest)
 
-        print("\n--- DEBUG ---")
-        print("PORT_USA fuel remaining:", w.world.get_inventory_quantity("PORT_USA", "fuel"))
-        print("PORT_USA steel:", w.world.get_inventory_quantity("PORT_USA", "steel"))
-        print("oil_co revenue_last_tick:", w.oil_co.revenue_last_tick)
-        print("oil_co input_costs_last_tick:", w.oil_co.input_costs_last_tick)
-        print("steel_co input_costs_last_tick:", w.steel_co.input_costs_last_tick)
-        print("fuel current_price:", w.fuel.current_price)
-
         self.assertGreater(w.farm_co.cash, farm_cash_before)
         self.assertGreater(w.oil_co.revenue_last_tick, 0.0)
 

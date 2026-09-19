@@ -53,6 +53,12 @@ fuel = Commodity(
     unit="barrel"
 )
 
+munitions = Commodity(
+    id="munitions",
+    name="Munitions",
+    unit="crate"
+)
+
 oil_co = Company(
     id="OILCO",
     name="Consolidated Oil",
@@ -145,8 +151,10 @@ world.add_loan(loan_1)
 world.add_market(usa_market)
 world.add_commodity(oil)
 world.add_commodity(fuel)
+world.add_commodity(munitions)
 world.add_production_facility(refinery)
 world.add_inventory("PORT_IRN", "crude_oil", 5000)
+world.add_inventory("PORT_USA", "munitions", 1000)
 world.add_district(district_a)
 world.add_district(district_b)
 world.add_siege(mosul_siege)
