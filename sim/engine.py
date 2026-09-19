@@ -18,6 +18,7 @@ from sim.entities import (
 from sim.systems.accounting import (
     record_sale, 
     close_books,
+    open_books,
     charge_for_inputs,
 )
 
@@ -158,6 +159,7 @@ class World:
 
     def run_tick(self):
         self.tick_number += 1
+        open_books(self)
 
         self._production_phase()
         self._trade_phase()

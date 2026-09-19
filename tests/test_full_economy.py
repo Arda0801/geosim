@@ -21,9 +21,15 @@ class TestFullEconomy(unittest.TestCase):
 
         world.run_tick()  # farm sells food to demand, refinery makes fuel (steel mill takes some, demand takes rest)
 
+        print("\n--- DEBUG ---")
+        print("PORT_USA fuel remaining:", world.get_inventory_quantity("PORT_USA", "fuel"))
+        print("PORT_USA steel:", world.get_inventory_quantity("PORT_USA", "steel"))
+        print("oil_co revenue_last_tick:", oil_co.revenue_last_tick)
+        print("oil_co input_costs_last_tick:", oil_co.input_costs_last_tick)
+        print("steel_co input_costs_last_tick:", steel_co.input_costs_last_tick)
+        print("fuel current_price:", fuel.current_price)
+
         self.assertGreater(farm_co.cash, farm_cash_before)
-        # oil_co pays for crude + wages + interest, but should also earn from fuel demand
-        # net direction depends on tuning, so just confirm revenue was recorded, not necessarily net-positive cash
         self.assertGreater(oil_co.revenue_last_tick, 0.0)
 
     def test_blockade_starves_fuel_demand_and_spikes_price(self):
