@@ -19,6 +19,15 @@ class Company(BaseModel):
     production_capacity: float  # units/tick it can produce
     current_output: float = 0.0
     wage_cost_per_tick: float
+    revenue_last_tick: float = 0.0
+    input_costs_last_tick: float = 0.0
+    wage_costs_last_tick: float = 0.0
+    interest_paid_last_tick: float = 0.0
+    principal_paid_last_tick: float = 0.0
+    tax_paid_last_tick: float = 0.0
+    profit_last_tick: float = 0.0
+    total_revenue: float = 0.0
+    total_profit: float = 0.0
 
 class Bank(BaseModel):
     id: str

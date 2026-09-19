@@ -15,6 +15,10 @@ from sim.entities import (
     District,
     Siege,
 )
+from sim.systems.accounting import (
+    record_sale, 
+    close_books,
+)
 
 from sim.systems.production import produce
 
@@ -163,6 +167,7 @@ class World:
         self._finance_phase()
         self._nation_phase()
         self._population_growth_phase()
+        close_books(self)
 
     def run_hour(self):
         self.hour_number += 1
@@ -302,7 +307,6 @@ class World:
             if produced > 0:
                 company.current_output = produced
 
-            # Sell whatever this facility just added to its region's inventory
             for commodity_id, output_per_unit in facility.outputs.items():
                 commodity = self.commodities.get(commodity_id)
                 if not commodity:
@@ -312,12 +316,11 @@ class World:
                 if amount_produced <= 0:
                     continue
 
-                revenue = amount_produced * commodity.current_price
-                company.cash += revenue
-
+                record_sale(company, commodity, amount_produced)
                 self.remove_inventory(facility.region_id, commodity_id, amount_produced)
 
             company.cash -= company.wage_cost_per_tick
+            company.wage_costs_last_tick += company.wage_cost_per_tick
 
     def _finance_phase(self):
         for loan in self.loans.values():
@@ -334,15 +337,16 @@ class World:
             if borrower and borrower.cash >= payment_due:
                 borrower.cash -= payment_due
                 loan.remaining_balance -= principal_due
+                borrower.interest_paid_last_tick += interest
+                borrower.principal_paid_last_tick += principal_due
                 if bank:
                     bank.reserves += payment_due
             elif borrower:
-                # can't cover full payment — pay interest only if possible, else default risk
                 if borrower.cash >= interest:
                     borrower.cash -= interest
+                    borrower.interest_paid_last_tick += interest
                     if bank:
                         bank.reserves += interest
-                # else: missed payment entirely — we'll add default handling later
 
             loan.ticks_elapsed += 1
             if loan.remaining_balance <= 0:
@@ -356,8 +360,9 @@ class World:
                 if c.home_nation_id == nation.id
             ]
             for company in nation_companies:
-                tax = company.cash * nation.tax_rate * 0.01  # small placeholder slice
+                tax = company.cash * nation.tax_rate * 0.01
                 company.cash -= tax
+                company.tax_paid_last_tick += tax
                 nation.treasury += tax
 
     def apply_event(self, event: Event):
