@@ -5,7 +5,7 @@ from tests.helpers import make_basic_world
 
 class TestSiege(unittest.TestCase):
     def test_siege_erodes_control_gradually_without_flipping(self):
-        world, usa, iran, port_usa, port_iran, crude, fuel = make_basic_world()
+        w = make_basic_world()
 
         district = District(
             id="HOUSTON_PORT",
@@ -14,7 +14,7 @@ class TestSiege(unittest.TestCase):
             control={"IRN": 0.9, "USA": 0.1},
             terrain_defense_multiplier=2.5,
         )
-        world.add_district(district)
+        w.world.add_district(district)
 
         siege = Siege(
             id="SIEGE_1",
@@ -24,10 +24,10 @@ class TestSiege(unittest.TestCase):
             attacker_committed_force=50.0,
             defender_morale=1.3,
         )
-        world.add_siege(siege)
+        w.world.add_siege(siege)
 
         for _ in range(30):
-            world.run_day()
+            w.world.run_day()
 
         irn_control = district.control["IRN"]
 
