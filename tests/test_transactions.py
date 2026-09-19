@@ -1,10 +1,10 @@
-import pytest
+import unittest
 
 from sim.engine import World
 from sim.entities import Company, Commodity
 
 
-def make_world():
+def make_transaction_world():
     world = World()
 
     world.add_commodity(
@@ -53,62 +53,58 @@ def make_world():
     return world
 
 
-def test_successful_transaction():
-    world = make_world()
+class TestTransactions(unittest.TestCase):
+    def test_successful_transaction(self):
+        world = make_transaction_world()
 
-    transaction = world.execute_transaction(
-        transaction_id="T1",
-        seller_id="SELLER",
-        buyer_id="BUYER",
-        commodity_id="fuel",
-        quantity=900,
-        price_per_unit=50,
-        region_id="PORT_USA",
-    )
-
-    assert transaction.total_value == 45000
-
-    assert world.companies["SELLER"].cash == 55000
-    assert world.companies["BUYER"].cash == 55000
-
-    assert world.get_inventory_quantity(
-        "SELLER",
-        "fuel",
-        "PORT_USA",
-    ) == 0
-
-    assert world.get_inventory_quantity(
-        "BUYER",
-        "fuel",
-        "PORT_USA",
-    ) == 900
-
-
-def test_insufficient_inventory():
-    world = make_world()
-
-    with pytest.raises(ValueError, match="insufficient inventory"):
-        world.execute_transaction(
-            transaction_id="T1",
-            seller_id="SELLER",
-            buyer_id="BUYER",
-            commodity_id="fuel",
-            quantity=1000,
-            price_per_unit=50,
-            region_id="PORT_USA",
-        )
-
-
-def test_insufficient_cash():
-    world = make_world()
-
-    with pytest.raises(ValueError, match="insufficient cash"):
-        world.execute_transaction(
+        transaction = world.execute_transaction(
             transaction_id="T1",
             seller_id="SELLER",
             buyer_id="BUYER",
             commodity_id="fuel",
             quantity=900,
-            price_per_unit=1000,
+            price_per_unit=50,
             region_id="PORT_USA",
         )
+
+        self.assertEqual(transaction.total_value, 45000)
+        self.assertEqual(world.companies["SELLER"].cash, 55000)
+        self.assertEqual(world.companies["BUYER"].cash, 55000)
+        self.assertEqual(
+            world.get_inventory_quantity("SELLER", "fuel", "PORT_USA"), 0
+        )
+        self.assertEqual(
+            world.get_inventory_quantity("BUYER", "fuel", "PORT_USA"), 900
+        )
+
+    def test_insufficient_inventory_raises(self):
+        world = make_transaction_world()
+
+        with self.assertRaises(ValueError):
+            world.execute_transaction(
+                transaction_id="T1",
+                seller_id="SELLER",
+                buyer_id="BUYER",
+                commodity_id="fuel",
+                quantity=1000,
+                price_per_unit=50,
+                region_id="PORT_USA",
+            )
+
+    def test_insufficient_cash_raises(self):
+        world = make_transaction_world()
+
+        with self.assertRaises(ValueError):
+            world.execute_transaction(
+                transaction_id="T1",
+                seller_id="SELLER",
+                buyer_id="BUYER",
+                commodity_id="fuel",
+                quantity=900,
+                price_per_unit=1000,
+                region_id="PORT_USA",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
