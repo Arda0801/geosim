@@ -74,3 +74,38 @@ def make_production_world():
     world.add_production_facility(refinery)
 
     return world, usa, iran, port_usa, port_iran, crude, fuel, route, oil_co, bank, loan, refinery
+
+def make_multi_chain_world():
+    """Production world plus a steel mill (consumes fuel) and food production."""
+    world, usa, iran, port_usa, port_iran, crude, fuel, route, oil_co, bank, loan, refinery = make_production_world()
+
+    steel = Commodity(id="steel", name="Steel", unit="tonne")
+    food = Commodity(id="food", name="Food", unit="tonne")
+    world.add_commodity(steel)
+    world.add_commodity(food)
+
+    steel_co = Company(
+        id="STEELCO", name="American Steel", home_nation_id="USA", sector="manufacturing",
+        cash=15_000, production_capacity=500, wage_cost_per_tick=3_000,
+    )
+    world.add_company(steel_co)
+
+    steel_mill = ProductionFacility(
+        id="STEELMILL_01", company_id="STEELCO", region_id="PORT_USA",
+        inputs={"fuel": 1.0}, outputs={"steel": 0.7}, capacity=500,
+    )
+    world.add_production_facility(steel_mill)
+
+    farm_co = Company(
+        id="FARMCO", name="Heartland Foods", home_nation_id="USA", sector="agriculture",
+        cash=8_000, production_capacity=800, wage_cost_per_tick=1_500,
+    )
+    world.add_company(farm_co)
+
+    farm = ProductionFacility(
+        id="FARM_01", company_id="FARMCO", region_id="PORT_USA",
+        inputs={}, outputs={"food": 1.0}, capacity=800,
+    )
+    world.add_production_facility(farm)
+
+    return world, usa, iran, port_usa, port_iran, crude, fuel, route, oil_co, bank, loan, refinery, steel, food, steel_co, steel_mill, farm_co, farm

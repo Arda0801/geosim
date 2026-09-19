@@ -18,6 +18,7 @@ from sim.entities import (
 from sim.systems.accounting import (
     record_sale, 
     close_books,
+    charge_for_inputs,
 )
 
 from sim.systems.production import produce
@@ -273,6 +274,16 @@ class World:
                 available_here = self.get_inventory_quantity(region.id, profile.commodity_id)
                 take = min(available_here, remaining_to_consume)
                 if take > 0:
+                    producer = next(
+                        (f for f in self.production_facilities.values()
+                         if f.region_id == region.id and profile.commodity_id in f.outputs),
+                        None
+                    )
+                    if producer:
+                        company = self.companies.get(producer.company_id)
+                        if company:
+                            record_sale(company, commodity, take)
+
                     self.remove_inventory(region.id, profile.commodity_id, take)
                     remaining_to_consume -= take
 
@@ -306,21 +317,42 @@ class World:
 
             if produced > 0:
                 company.current_output = produced
-
-            for commodity_id, output_per_unit in facility.outputs.items():
-                commodity = self.commodities.get(commodity_id)
-                if not commodity:
-                    continue
-
-                amount_produced = produced * output_per_unit
-                if amount_produced <= 0:
-                    continue
-
-                record_sale(company, commodity, amount_produced)
-                self.remove_inventory(facility.region_id, commodity_id, amount_produced)
+                charge_for_inputs(facility, produced, self)
 
             company.cash -= company.wage_cost_per_tick
             company.wage_costs_last_tick += company.wage_cost_per_tick
+
+    def _surplus_sale_phase(self):
+        # For each region, sell whatever's left in inventory for commodities
+        # that no facility in that region needs as an input this tick.
+        needed_as_input = set()
+        for facility in self.production_facilities.values():
+            needed_as_input.update(facility.inputs.keys())
+
+        for (owner_id, commodity_id), inv in list(self.inventories.items()):
+            if commodity_id in needed_as_input:
+                continue  # something might still need this as an input, don't auto-sell it
+
+            commodity = self.commodities.get(commodity_id)
+            if not commodity or inv.quantity <= 0:
+                continue
+
+            # find which company owns this facility/region's output — simplistic:
+            # sell on behalf of whichever company has a facility outputting this commodity here
+            producer = next(
+                (f for f in self.production_facilities.values()
+                 if f.region_id == owner_id and commodity_id in f.outputs),
+                None
+            )
+            if not producer:
+                continue
+
+            company = self.companies.get(producer.company_id)
+            if not company:
+                continue
+
+            record_sale(company, commodity, inv.quantity)
+            self.remove_inventory(owner_id, commodity_id, inv.quantity)
 
     def _finance_phase(self):
         for loan in self.loans.values():
