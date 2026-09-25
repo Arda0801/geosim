@@ -18,24 +18,20 @@ from sim.entities import (
     Order,
 )
 from sim.systems.accounting import (
-    record_sale, 
     close_books,
     open_books,
-    charge_for_inputs,
 )
-from sim.systems.government import (
-    collect_profit_tax,
-    government_spending_phase,
-    pay_debt_interest,
-)
-
-from sim.systems.production import produce
-
+from sim.systems.government import government_finance_phase
+from sim.systems.hourly import hourly_phase
 from sim.systems.market_clearing import market_clearing_phase
-
+from sim.systems.markets import market_phase
+from sim.systems.population import population_growth_phase
+from sim.systems.production import production_phase
 from sim.systems.trade import trade_phase
-
 from sim.systems.siege import siege_phase
+from sim.systems.events import apply_event
+from sim.systems.finance import finance_phase
+from sim.systems.transactions import execute_transaction
 
 HOURS_PER_TICK = 24 * 7  # 1 tick = 1 week
 
@@ -89,75 +85,11 @@ class World:
     def add_production_facility(self, facility: ProductionFacility):
         self.production_facilities[facility.id] = facility
 
-    def _population_growth_phase(self):
-        for region in self.regions.values():
-            region.population *= (1 + region.growth_rate)
-
     def add_siege(self, siege: Siege):
         self.sieges[siege.id] = siege
         district = self.districts.get(siege.district_id)
         if district:
             district.contested = True
-
-    def _siege_phase(self):
-        for siege in self.sieges.values():
-            if siege.status != "active":
-                continue
-
-            district = self.districts.get(siege.district_id)
-            if not district:
-                continue
-
-            # attacker must supply munitions from their own nation's regions to sustain the siege
-            attacker_regions = [
-                r for r in self.regions.values()
-                if r.owner_nation_id == siege.attacker_nation_id
-            ]
-            munitions_available = sum(
-                self.get_inventory_quantity(r.id, "munitions")
-                for r in attacker_regions
-            )
-
-            munitions_needed = siege.munitions_consumed_per_day
-            supply_ratio = min(1.0, munitions_available / munitions_needed) if munitions_needed > 0 else 1.0
-
-            remaining_to_consume = min(munitions_needed, munitions_available)
-            for region in attacker_regions:
-                if remaining_to_consume <= 0:
-                    break
-                available_here = self.get_inventory_quantity(region.id, "munitions")
-                take = min(available_here, remaining_to_consume)
-                if take > 0:
-                    self.remove_inventory(region.id, "munitions", take)
-                    remaining_to_consume -= take
-
-            defender_control = district.control.get(siege.defender_nation_id, 0.0)
-            attacker_control = district.control.get(siege.attacker_nation_id, 0.0)
-
-            # under-supplied sieges lose effectiveness proportionally
-            effective_attack = (
-                siege.attacker_committed_force
-                * siege.attacker_morale
-                * supply_ratio
-            )
-            effective_defense = (
-                defender_control
-                * district.terrain_defense_multiplier
-                * siege.defender_morale
-                * 100
-            )
-
-            if effective_attack <= 0:
-                continue
-
-            shift = min(0.02, effective_attack / (effective_attack + effective_defense) * 0.05)
-
-            district.control[siege.attacker_nation_id] = attacker_control + shift
-            district.control[siege.defender_nation_id] = max(0.0, defender_control - shift)
-
-            if district.control[siege.defender_nation_id] <= 0.01:
-                siege.status = "resolved_attacker"
-                district.contested = False
 
     def add_order(self, order: Order):
         self.orders[order.id] = order
@@ -222,68 +154,16 @@ class World:
         price_per_unit: float,
         region_id: str,
     ) -> Transaction:
-
-        if quantity <= 0:
-            raise ValueError("Transaction quantity must be positive")
-
-        if price_per_unit < 0:
-            raise ValueError("Price cannot be negative")
-
-        if seller_id not in self.companies:
-            raise ValueError("Seller does not exist")
-
-        if buyer_id not in self.companies:
-            raise ValueError("Buyer does not exist")
-
-        seller = self.companies[seller_id]
-        buyer = self.companies[buyer_id]
-
-        total_value = quantity * price_per_unit
-
-        available = self.get_inventory_quantity(
+        return execute_transaction(
+            self,
+            transaction_id,
             seller_id,
-            commodity_id,
-            region_id,
-        )
-
-        if available < quantity:
-            raise ValueError("Seller has insufficient inventory")
-
-        if buyer.cash < total_value:
-            raise ValueError("Buyer has insufficient cash")
-
-        self.remove_inventory(
-            seller_id,
-            commodity_id,
-            region_id,
-            quantity,
-        )
-
-        self.add_inventory(
             buyer_id,
             commodity_id,
-            region_id,
             quantity,
+            price_per_unit,
+            region_id,
         )
-
-        seller.cash += total_value
-        buyer.cash -= total_value
-
-        transaction = Transaction(
-            id=transaction_id,
-            seller_id=seller_id,
-            buyer_id=buyer_id,
-            commodity_id=commodity_id,
-            quantity=quantity,
-            price_per_unit=price_per_unit,
-            total_value=total_value,
-            timestamp_hours=self.current_hour,
-            status="completed",
-        )
-
-        self.add_transaction(transaction)
-
-        return transaction
 
     def add_demand_profile(self, profile: DemandProfile):
         self.demand_profiles.append(profile)
@@ -294,51 +174,27 @@ class World:
     def run_tick(self):
         self.tick_number += 1
         open_books(self)
-        self._trade_phase()
-        self._production_phase()
-        self._market_clearing_phase()
+        trade_phase(self)
+        production_phase(self)
+        market_clearing_phase(self)
         for _ in range(7):
             self.run_day()
-        self._finance_phase()
-        self._population_growth_phase()
+        finance_phase(self)
+        population_growth_phase(self)
         close_books(self)
-        self._government_finance_phase()
+        government_finance_phase(self)
 
     def run_hour(self):
         self.hour_number += 1
         self.current_hour += 1
-        self._hourly_phase()
-
-    def _hourly_phase(self):
-        # Only entities actively engaged in movement/combat/siege get evaluated.
-        # Empty for now — Phase 4 will populate active_military_entities and
-        # resolve movement/combat here.
-        for entity_id in self.active_military_entities:
-            pass
+        hourly_phase(self)
 
     def run_day(self):
         self.day_number += 1
         for _ in range(24):
             self.run_hour()
-        self._siege_phase()
-        self._market_phase()
-
-    def _market_phase(self):
-        for market in self.markets.values():
-            # crude sentiment proxy: recent blockades/strikes raise volatility
-            recent_shock = any(
-                e.timestamp_hours >= self.current_hour - 24 and not e.applied is False
-                for e in self.events
-            )
-            if recent_shock:
-                market.volatility_index += 5.0
-                market.index_value *= 0.98  # 2% daily drop on shock days
-            else:
-                market.volatility_index = max(10.0, market.volatility_index * 0.95)  # decay toward baseline
-                market.index_value *= 1.001  # small daily drift up, placeholder
-
-    def _market_clearing_phase(self):
-        market_clearing_phase(self)
+        siege_phase(self)
+        market_phase(self)
 
     def remove_inventory(
         self,
@@ -407,71 +263,6 @@ class World:
             )
         )
 
-    def _demand_and_pricing_phase(self):
-        for profile in self.demand_profiles:
-            commodity = self.commodities.get(profile.commodity_id)
-            if not commodity:
-                continue
-
-            nation_regions = [
-                r for r in self.regions.values()
-                if r.owner_nation_id == profile.nation_id
-            ]
-
-            total_daily_demand = sum(
-                r.population * commodity.per_capita_daily_demand
-                for r in nation_regions
-            )
-
-            if total_daily_demand <= 0:
-                continue
-
-            total_available = sum(
-                self.get_inventory_quantity(r.id, profile.commodity_id)
-                for r in nation_regions
-            )
-
-            demand_met = min(total_daily_demand, total_available)
-            remaining_to_consume = demand_met
-
-            for region in nation_regions:
-                if remaining_to_consume <= 0:
-                    break
-                regional_inventories = [
-                    inventory
-                    for inventory in self.inventories.values()
-                    if inventory.region_id == region.id
-                    and inventory.commodity_id == profile.commodity_id
-                    and inventory.quantity > 0
-                ]
-                for inventory in regional_inventories:
-                    if remaining_to_consume <= 0:
-                        break
-                    take = min(inventory.quantity, remaining_to_consume)
-                    producer = next(
-                        (f for f in self.production_facilities.values()
-                         if f.region_id == region.id
-                         and f.company_id == inventory.owner_id
-                         and profile.commodity_id in f.outputs),
-                        None
-                    )
-                    if producer:
-                        company = self.companies.get(producer.company_id)
-                        if company:
-                            record_sale(company, commodity, take)
-
-                    self.remove_inventory(
-                        inventory.owner_id,
-                        profile.commodity_id,
-                        region.id,
-                        take,
-                    )
-                    remaining_to_consume -= take
-
-    # Price discovery now happens in _market_clearing_phase
-    # This phase only tracks fulfillment (consumption actually happened)
-    # No direct price manipulation here anymore
-
     def get_region_storage_used(self, region_id: str) -> float:
         return sum(
             inv.quantity
@@ -505,150 +296,5 @@ class World:
             return None
         return max(district.control, key=lambda nation_id: district.control[nation_id])
 
-    def _production_phase(self):
-        for facility in self.production_facilities.values():
-            if not facility.operational:
-                continue
-
-            produced = produce(facility, self)
-
-            if produced <= 0:
-                continue
-
-            company = self.companies[facility.company_id]
-            company.current_output = produced
-            charge_for_inputs(facility, produced, self)
-
-            for commodity_id, amount_produced in facility.outputs.items():
-                if amount_produced <= 0:
-                    continue
-
-                amount_produced *= produced
-
-                self.add_inventory(
-                    owner_id=facility.company_id,
-                    commodity_id=commodity_id,
-                    region_id=facility.region_id,
-                    quantity=amount_produced,
-                )
-
-            company.cash -= company.wage_cost_per_tick
-            company.wage_costs_last_tick += company.wage_cost_per_tick
-
-    def _surplus_sale_phase(self):
-        # For each region, sell whatever's left in inventory for commodities
-        # that no facility in that region needs as an input this tick.
-        needed_as_input = set()
-        for facility in self.production_facilities.values():
-            needed_as_input.update(facility.inputs.keys())
-
-        for (owner_id, commodity_id, region_id), inv in list(self.inventories.items()):
-            if commodity_id in needed_as_input:
-                continue  # something might still need this as an input, don't auto-sell it
-
-            commodity = self.commodities.get(commodity_id)
-            if not commodity or inv.quantity <= 0:
-                continue
-
-            # find which company owns this facility/region's output — simplistic:
-            # sell on behalf of whichever company has a facility outputting this commodity here
-            producer = next(
-                (f for f in self.production_facilities.values()
-                 if f.region_id == region_id and commodity_id in f.outputs),
-                None
-            )
-            if not producer:
-                continue
-
-            company = self.companies.get(producer.company_id)
-            if not company:
-                continue
-
-            record_sale(company, commodity, inv.quantity)
-            self.remove_inventory(owner_id, commodity_id, region_id, inv.quantity)
-
-    def _finance_phase(self):
-        for loan in self.loans.values():
-            if loan.status != "active":
-                continue
-
-            interest = loan.remaining_balance * loan.interest_rate
-            principal_due = loan.principal / loan.term_ticks
-            payment_due = interest + principal_due
-
-            borrower = self.companies.get(loan.borrower_id)
-            bank = self.banks.get(loan.lender_id)
-
-            if borrower and borrower.cash >= payment_due:
-                borrower.cash -= payment_due
-                loan.remaining_balance -= principal_due
-                borrower.interest_paid_last_tick += interest
-                borrower.principal_paid_last_tick += principal_due
-                if bank:
-                    bank.reserves += payment_due
-            elif borrower:
-                if borrower.cash >= interest:
-                    borrower.cash -= interest
-                    borrower.interest_paid_last_tick += interest
-                    if bank:
-                        bank.reserves += interest
-
-            loan.ticks_elapsed += 1
-            if loan.remaining_balance <= 0:
-                loan.remaining_balance = 0.0
-                loan.status = "paid_off"
-
-    def _government_finance_phase(self):
-        collect_profit_tax(self)
-        government_spending_phase(self)
-        pay_debt_interest(self)
-
     def apply_event(self, event: Event):
-        self.events.append(event)
-
-        if event.event_type == "missile_strike":
-            company = self.companies.get(event.target_id)
-            if company:
-                company.production_capacity *= 0.5  # halve capacity, placeholder severity
-
-        event.applied = True
-
-    def _trade_phase(self):
-        for route in self.routes.values():
-            if route.status == "blockaded":
-                route.current_flow = 0.0
-                route.current_cost = route.base_cost * 3
-                continue
-
-            effective_capacity = route.capacity * (1 - route.risk_level)
-            effective_cost = route.base_cost * (1 + route.risk_level * 2)
-            route.current_flow = effective_capacity
-            route.current_cost = effective_cost
-
-            # Try to ship whatever commodities are available at origin, up to capacity
-            origin = route.origin_region_id
-            destination = route.destination_region_id
-
-            dest_region = self.regions.get(destination)
-            if not dest_region:
-                continue
-
-            dest_used = self.get_region_storage_used(destination)
-            dest_free = dest_region.storage_capacity - dest_used
-
-            for (owner_id, commodity_id, region_id), inv in list(self.inventories.items()):
-                if region_id != origin:
-                    continue
-
-                shippable = min(inv.quantity, effective_capacity, dest_free)
-                if shippable <= 0:
-                    continue
-
-                self.remove_inventory(owner_id, commodity_id, origin, shippable)
-                self.add_inventory(owner_id, commodity_id, destination, shippable)
-
-                dest_free -= shippable
-                effective_capacity -= shippable
-
-                if effective_capacity <= 0:
-                    break
+        apply_event(self, event)

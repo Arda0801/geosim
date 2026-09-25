@@ -71,3 +71,9 @@ def pay_debt_interest(world):
             nation.treasury = 0.0
             nation.outstanding_bonds += unpaid
             nation.interest_paid_last_tick = total_interest - unpaid
+
+
+def government_finance_phase(world):
+    collect_profit_tax(world)
+    government_spending_phase(world)
+    pay_debt_interest(world)

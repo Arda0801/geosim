@@ -1,3 +1,6 @@
+from sim.systems.accounting import charge_for_inputs, record_sale
+
+
 def produce(facility, world):
     """
     Attempt to run one production facility for one tick.
@@ -26,3 +29,30 @@ def produce(facility, world):
             amount_required
         )
     return possible_production
+
+
+def production_phase(world):
+    for facility in world.production_facilities.values():
+        if not facility.operational:
+            continue
+
+        produced = produce(facility, world)
+        if produced <= 0:
+            continue
+
+        company = world.companies[facility.company_id]
+        company.current_output = produced
+        charge_for_inputs(facility, produced, world)
+
+        for commodity_id, amount_per_unit in facility.outputs.items():
+            if amount_per_unit <= 0:
+                continue
+            world.add_inventory(
+                owner_id=facility.company_id,
+                commodity_id=commodity_id,
+                region_id=facility.region_id,
+                quantity=amount_per_unit * produced,
+            )
+
+        company.cash -= company.wage_cost_per_tick
+        company.wage_costs_last_tick += company.wage_cost_per_tick
