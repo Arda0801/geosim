@@ -115,6 +115,11 @@ class Commodity(BaseModel):
     unit: str
     current_price: float = 10.0
     per_capita_daily_demand: float = 0.0  # units/person/day, 0 = not a population-demanded good
+    # Market clearing fields (new)
+    last_clearing_price: float = 0.0  # price from the most recent clearing
+    last_volume_traded: float = 0.0  # total quantity matched in the most recent clearing
+    last_buy_quantity: float = 0.0  # total buy order quantity in the most recent clearing
+    last_sell_quantity: float = 0.0  # total sell order quantity in the most recent clearing
 
 class DemandProfile(BaseModel):
     nation_id: str
@@ -159,3 +164,14 @@ class Transaction(BaseModel):
     total_value: float
     timestamp_hours: int
     status: str = "completed"
+
+class Order(BaseModel):
+    id: str
+    order_type: str  # "buy" or "sell"
+    commodity_id: str
+    owner_id: str  # company ID for sell orders, nation ID for population buy orders
+    quantity: float  # how many units to buy/sell
+    price: float  # limit price (max willing to pay for buys, min willing to accept for sells)
+    tick_placed: int  # which tick this order was created
+    status: str = "open"  # "open", "filled", "partially_filled", "expired"
+    filled_quantity: float = 0.0  # how much has been matched so far

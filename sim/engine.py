@@ -15,6 +15,7 @@ from sim.entities import (
     District,
     Siege,
     Transaction,
+    Order,
 )
 from sim.systems.accounting import (
     record_sale, 
@@ -29,6 +30,8 @@ from sim.systems.government import (
 )
 
 from sim.systems.production import produce
+
+from sim.systems.market_clearing import market_clearing_phase
 
 HOURS_PER_TICK = 24 * 7  # 1 tick = 1 week
 
@@ -56,6 +59,7 @@ class World:
         self.demand_profiles: list[DemandProfile] = []
         self.districts: dict[str, District] = {}
         self.sieges: dict[str, Siege] = {}
+        self.orders: dict[str, Order] = {}
 
     def add_market(self, market: Market):
         self.markets[market.id] = market
@@ -150,6 +154,9 @@ class World:
             if district.control[siege.defender_nation_id] <= 0.01:
                 siege.status = "resolved_attacker"
                 district.contested = False
+
+    def add_order(self, order: Order):
+        self.orders[order.id] = order
 
     def add_inventory(
         self,
@@ -277,8 +284,9 @@ class World:
     def run_tick(self):
         self.tick_number += 1
         open_books(self)
-        self._production_phase()
         self._trade_phase()
+        self._production_phase()
+        self._market_clearing_phase()
         for _ in range(7):
             self.run_day()
         self._finance_phase()
@@ -320,6 +328,9 @@ class World:
                 market.volatility_index = max(10.0, market.volatility_index * 0.95)  # decay toward baseline
                 market.index_value *= 1.001  # small daily drift up, placeholder
 
+    def _market_clearing_phase(self):
+        market_clearing_phase(self)
+
     def remove_inventory(
         self,
         owner_id: str,
@@ -334,17 +345,31 @@ class World:
         if quantity < 0:
             raise ValueError("Quantity cannot be negative")
 
-        key = (owner_id, commodity_id, region_id)
+        remaining = quantity
+        direct_key = (owner_id, commodity_id, region_id)
+        direct_inventory = self.inventories.get(direct_key)
 
-        inventory = self.inventories.get(key)
+        if direct_inventory is not None:
+            taken = min(direct_inventory.quantity, remaining)
+            direct_inventory.quantity -= taken
+            remaining -= taken
 
-        if inventory is None:
-            raise ValueError("Inventory does not exist")
+        if remaining > 0:
+            # Some inventories are stored under the company owner, while region stock keeps the region as the location.
+            for (inventory_owner, inventory_commodity, inventory_region), inventory in list(self.inventories.items()):
+                if inventory_commodity != commodity_id or inventory.quantity <= 0:
+                    continue
+                if inventory_owner != owner_id and inventory_region != region_id:
+                    continue
 
-        if inventory.quantity < quantity:
+                taken = min(inventory.quantity, remaining)
+                inventory.quantity -= taken
+                remaining -= taken
+                if remaining <= 0:
+                    break
+
+        if remaining > 0:
             raise ValueError("Insufficient inventory")
-
-        inventory.quantity -= quantity
 
     def get_inventory_quantity(
         self,
@@ -425,12 +450,9 @@ class World:
                     )
                     remaining_to_consume -= take
 
-            fulfillment_ratio = demand_met / total_daily_demand
-            if fulfillment_ratio < 1.0:
-                shortage = 1.0 - fulfillment_ratio
-                commodity.current_price *= (1 + shortage * 0.1)
-            else:
-                commodity.current_price *= 0.999
+    # Price discovery now happens in _market_clearing_phase
+    # This phase only tracks fulfillment (consumption actually happened)
+    # No direct price manipulation here anymore
 
     def get_region_storage_used(self, region_id: str) -> float:
         return sum(
