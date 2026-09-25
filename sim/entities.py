@@ -170,8 +170,9 @@ class Order(BaseModel):
     order_type: str  # "buy" or "sell"
     commodity_id: str
     owner_id: str  # company ID for sell orders, nation ID for population buy orders
-    quantity: float  # how many units to buy/sell
-    price: float  # limit price (max willing to pay for buys, min willing to accept for sells)
-    tick_placed: int  # which tick this order was created
-    status: str = "open"  # "open", "filled", "partially_filled", "expired"
-    filled_quantity: float = 0.0  # how much has been matched so far
+    region_id: str  # where the goods are (sell) or where they're delivered (buy)
+    quantity: float
+    price: float
+    tick_placed: int
+    status: str = "open"
+    filled_quantity: float = 0.0

@@ -28,8 +28,11 @@ def charge_for_inputs(facility, produced, world) -> float:
                                 produced * required_per_unit)
     return cost
 
-def record_sale(company, commodity, quantity) -> float:
-    revenue = quantity * commodity.current_price
+def record_sale(company, commodity, quantity, price_per_unit=None) -> float:
+    sale_price = (
+        commodity.current_price if price_per_unit is None else price_per_unit
+    )
+    revenue = quantity * sale_price
     company.cash += revenue
     company.revenue_last_tick += revenue
     return revenue

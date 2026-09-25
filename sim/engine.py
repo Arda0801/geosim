@@ -33,6 +33,8 @@ from sim.systems.production import produce
 
 from sim.systems.market_clearing import market_clearing_phase
 
+from sim.systems.trade import trade_phase
+
 HOURS_PER_TICK = 24 * 7  # 1 tick = 1 week
 
 
@@ -167,16 +169,22 @@ class World:
         capacity: float = 100000,
     ):
         if quantity is None:
+            if not isinstance(region_id, (int, float)):
+                raise TypeError("quantity is required when region_id is provided")
             quantity = float(region_id)
-            region_id = owner_id
+            inventory_region_id = owner_id
+        else:
+            if not isinstance(region_id, str):
+                raise TypeError("region_id must be a string")
+            inventory_region_id = region_id
 
-        key = (owner_id, commodity_id, region_id)
+        key = (owner_id, commodity_id, inventory_region_id)
 
         if key not in self.inventories:
             self.inventories[key] = Inventory(
                 owner_id=owner_id,
                 commodity_id=commodity_id,
-                region_id=region_id,
+                region_id=inventory_region_id,
                 quantity=0.0,
                 capacity=capacity,
             )
@@ -311,7 +319,6 @@ class World:
         for _ in range(24):
             self.run_hour()
         self._siege_phase()
-        self._demand_and_pricing_phase()
         self._market_phase()
 
     def _market_phase(self):
@@ -339,14 +346,20 @@ class World:
         quantity: float | None = None,
     ):
         if quantity is None:
+            if not isinstance(region_id, (int, float)):
+                raise TypeError("quantity is required when region_id is provided")
             quantity = float(region_id)
-            region_id = owner_id
+            inventory_region_id = owner_id
+        else:
+            if not isinstance(region_id, str):
+                raise TypeError("region_id must be a string")
+            inventory_region_id = region_id
 
         if quantity < 0:
             raise ValueError("Quantity cannot be negative")
 
         remaining = quantity
-        direct_key = (owner_id, commodity_id, region_id)
+        direct_key = (owner_id, commodity_id, inventory_region_id)
         direct_inventory = self.inventories.get(direct_key)
 
         if direct_inventory is not None:
@@ -359,7 +372,7 @@ class World:
             for (inventory_owner, inventory_commodity, inventory_region), inventory in list(self.inventories.items()):
                 if inventory_commodity != commodity_id or inventory.quantity <= 0:
                     continue
-                if inventory_owner != owner_id and inventory_region != region_id:
+                if inventory_owner != owner_id and inventory_region != inventory_region_id:
                     continue
 
                 taken = min(inventory.quantity, remaining)
@@ -386,7 +399,10 @@ class World:
             for (inventory_owner, inventory_commodity, inventory_region), inventory
             in self.inventories.items()
             if inventory_commodity == commodity_id
-            and inventory_region == owner_id
+            and (
+                inventory_region == owner_id
+                or (owner_id in self.companies and inventory_owner == owner_id)
+            )
         )
 
     def _demand_and_pricing_phase(self):
@@ -485,7 +501,7 @@ class World:
         district = self.districts.get(district_id)
         if not district or not district.control:
             return None
-        return max(district.control, key=district.control.get)
+        return max(district.control, key=lambda nation_id: district.control[nation_id])
 
     def _production_phase(self):
         for facility in self.production_facilities.values():

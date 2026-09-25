@@ -120,6 +120,11 @@ class TestMarketClearing(unittest.TestCase):
 
         # Volume traded should be recorded (limited by supply: 900 fuel/week)
         self.assertGreater(w.fuel.last_volume_traded, 0)
+        print("\nOrders this tick:")
+        for o in w.world.orders.values():
+            print(o)
+        print("Company fuel remaining:", w.world.get_inventory_quantity("OILCO", "fuel"))
+        print("oil_co.total_revenue:", w.oil_co.total_revenue)
         self.assertLessEqual(w.fuel.last_volume_traded, 900)
 
     def test_clearing_price_between_buy_and_sell_limits(self):

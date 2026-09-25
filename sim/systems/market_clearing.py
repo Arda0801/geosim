@@ -9,16 +9,8 @@ at the same clearing price.
 from sim.entities import Order
 
 def generate_sell_orders(world):
-    """
-    Region and company inventories can both offer goods on the market.
-    Sell price = current market price × 0.5 (accepting a discount to clear stock).
-    """
     for (owner_id, commodity_id, region_id), inv in world.inventories.items():
         if inv.quantity <= 0:
-            continue
-
-        # Only canonical local stock should be sold at market: owner and region are the same.
-        if owner_id != region_id:
             continue
 
         if owner_id not in world.companies and owner_id not in world.regions:
@@ -29,10 +21,11 @@ def generate_sell_orders(world):
             continue
 
         order = Order(
-            id=f"SELL_{world.tick_number}_{owner_id}_{commodity_id}",
+            id=f"SELL_{world.tick_number}_{owner_id}_{commodity_id}_{region_id}",
             order_type="sell",
             commodity_id=commodity_id,
             owner_id=owner_id,
+            region_id=region_id,
             quantity=inv.quantity,
             price=commodity.current_price * 0.5,
             tick_placed=world.tick_number,
@@ -53,28 +46,32 @@ def generate_buy_orders(world):
         nation = world.nations.get(profile.nation_id)
         if not nation:
             continue
-        # Calculate weekly demand (7 days worth)
+        # Create region-specific orders so matched goods have a valid destination.
         nation_regions = [
             r for r in world.regions.values()
             if r.owner_nation_id == profile.nation_id
         ]
-        weekly_demand = sum(
-            r.population * commodity.per_capita_daily_demand * 7
-            for r in nation_regions
-        )
-        if weekly_demand <= 0:
-            continue
-        # Buy at up to 2x current price — inelastic demand placeholder
-        order = Order(
-            id=f"BUY_{world.tick_number}_{profile.nation_id}_{profile.commodity_id}",
-            order_type="buy",
-            commodity_id=profile.commodity_id,
-            owner_id=profile.nation_id,
-            quantity=weekly_demand,
-            price=commodity.current_price * 2.0,
-            tick_placed=world.tick_number,
-        )
-        world.orders[order.id] = order
+        for region in nation_regions:
+            weekly_demand = (
+                region.population * commodity.per_capita_daily_demand * 7
+            )
+            if weekly_demand <= 0:
+                continue
+            # Buy at up to 2x current price — inelastic demand placeholder
+            order = Order(
+                id=(
+                    f"BUY_{world.tick_number}_{profile.nation_id}_"
+                    f"{profile.commodity_id}_{region.id}"
+                ),
+                order_type="buy",
+                commodity_id=profile.commodity_id,
+                owner_id=profile.nation_id,
+                region_id=region.id,
+                quantity=weekly_demand,
+                price=commodity.current_price * 2.0,
+                tick_placed=world.tick_number,
+            )
+            world.orders[order.id] = order
 
 
 def clear_market(world):
@@ -179,32 +176,22 @@ def clear_market(world):
 
 
 def execute_trade(world, buy_order, sell_order, commodity_id, quantity, price):
-    """
-    Execute a matched trade: transfer inventory, record cash flows.
-    """
     from sim.systems.accounting import record_sale
 
     commodity = world.commodities.get(commodity_id)
     if not commodity:
         return
 
-    # Transfer inventory from seller to buyer
-    # For now: remove from seller's inventory (goods are consumed by population)
-    # or keep in region inventory if the buyer is a company needing inputs
-    if buy_order.order_type == "buy" and buy_order.owner_id in world.companies:
-        # Company buying inputs — add to their inventory
-        world.remove_inventory(sell_order.owner_id, commodity_id, quantity)
-        world.add_inventory(buy_order.owner_id, commodity_id, quantity)
-    else:
-        # Population buying — goods are consumed
-        world.remove_inventory(sell_order.owner_id, commodity_id, quantity)
+    world.remove_inventory(sell_order.owner_id, commodity_id, sell_order.region_id, quantity)
 
-    # Record the sale for the seller's P&L
+    if buy_order.order_type == "buy" and buy_order.owner_id in world.companies:
+        world.add_inventory(buy_order.owner_id, commodity_id, buy_order.region_id, quantity)
+    # else: population buying — goods are consumed, no inventory added
+
     seller = world.companies.get(sell_order.owner_id)
     if seller:
-        record_sale(seller, commodity, quantity)
+        record_sale(seller, commodity, quantity, price)
 
-    # Update order statuses
     sell_order.filled_quantity += quantity
     buy_order.filled_quantity += quantity
 
