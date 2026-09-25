@@ -35,6 +35,8 @@ from sim.systems.market_clearing import market_clearing_phase
 
 from sim.systems.trade import trade_phase
 
+from sim.systems.siege import siege_phase
+
 HOURS_PER_TICK = 24 * 7  # 1 tick = 1 week
 
 
