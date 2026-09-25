@@ -1,3 +1,5 @@
+import math
+
 from sim.entities import (
     Nation,
     Company,
@@ -68,6 +70,11 @@ class World:
         self.regions[region.id] = region
 
     def add_district(self, district: District):
+        if any(
+            siege.status == "active" and siege.district_id == district.id
+            for siege in self.sieges.values()
+        ):
+            district.contested = True
         self.districts[district.id] = district
 
     def add_route(self, route: ShippingRoute):
@@ -88,7 +95,7 @@ class World:
     def add_siege(self, siege: Siege):
         self.sieges[siege.id] = siege
         district = self.districts.get(siege.district_id)
-        if district:
+        if district and siege.status == "active":
             district.contested = True
 
     def add_order(self, order: Order):
@@ -98,27 +105,22 @@ class World:
         self,
         owner_id: str,
         commodity_id: str,
-        region_id: str | float,
-        quantity: float | None = None,
+        region_id: str,
+        quantity: float,
         capacity: float = 100000,
     ):
-        if quantity is None:
-            if not isinstance(region_id, (int, float)):
-                raise TypeError("quantity is required when region_id is provided")
-            quantity = float(region_id)
-            inventory_region_id = owner_id
-        else:
-            if not isinstance(region_id, str):
-                raise TypeError("region_id must be a string")
-            inventory_region_id = region_id
+        if not math.isfinite(quantity) or quantity < 0:
+            raise ValueError("Inventory quantity must be finite and non-negative")
+        if not math.isfinite(capacity) or capacity < 0:
+            raise ValueError("Inventory capacity must be finite and non-negative")
 
-        key = (owner_id, commodity_id, inventory_region_id)
+        key = (owner_id, commodity_id, region_id)
 
         if key not in self.inventories:
             self.inventories[key] = Inventory(
                 owner_id=owner_id,
                 commodity_id=commodity_id,
-                region_id=inventory_region_id,
+                region_id=region_id,
                 quantity=0.0,
                 capacity=capacity,
             )
@@ -169,6 +171,8 @@ class World:
         self.demand_profiles.append(profile)
 
     def queue_event(self, event: Event):
+        if any(queued.id == event.id for queued in self.events):
+            raise ValueError(f"Event {event.id} already exists")
         self.events.append(event)
 
     def run_tick(self):
@@ -200,67 +204,38 @@ class World:
         self,
         owner_id: str,
         commodity_id: str,
-        region_id: str | float,
-        quantity: float | None = None,
+        region_id: str,
+        quantity: float,
     ):
-        if quantity is None:
-            if not isinstance(region_id, (int, float)):
-                raise TypeError("quantity is required when region_id is provided")
-            quantity = float(region_id)
-            inventory_region_id = owner_id
-        else:
-            if not isinstance(region_id, str):
-                raise TypeError("region_id must be a string")
-            inventory_region_id = region_id
-
         if quantity < 0:
             raise ValueError("Quantity cannot be negative")
 
-        remaining = quantity
-        direct_key = (owner_id, commodity_id, inventory_region_id)
-        direct_inventory = self.inventories.get(direct_key)
+        key = (owner_id, commodity_id, region_id)
+        inventory = self.inventories.get(key)
 
-        if direct_inventory is not None:
-            taken = min(direct_inventory.quantity, remaining)
-            direct_inventory.quantity -= taken
-            remaining -= taken
-
-        if remaining > 0:
-            # Some inventories are stored under the company owner, while region stock keeps the region as the location.
-            for (inventory_owner, inventory_commodity, inventory_region), inventory in list(self.inventories.items()):
-                if inventory_commodity != commodity_id or inventory.quantity <= 0:
-                    continue
-                if inventory_owner != owner_id and inventory_region != inventory_region_id:
-                    continue
-
-                taken = min(inventory.quantity, remaining)
-                inventory.quantity -= taken
-                remaining -= taken
-                if remaining <= 0:
-                    break
-
-        if remaining > 0:
+        if inventory is None or inventory.quantity < quantity:
             raise ValueError("Insufficient inventory")
 
-    def get_inventory_quantity(
-        self,
-        owner_id: str,
-        commodity_id: str,
-        region_id: str | None = None,
-    ) -> float:
-        if region_id is not None:
-            inventory = self.inventories.get((owner_id, commodity_id, region_id))
-            return inventory.quantity if inventory else 0.0
+        inventory.quantity -= quantity
 
+    def get_inventory_quantity(self, owner_id: str, commodity_id: str, region_id: str) -> float:
+        """Exact quantity at one specific owner+region location."""
+        inventory = self.inventories.get((owner_id, commodity_id, region_id))
+        return inventory.quantity if inventory else 0.0
+
+    def get_total_inventory_for_owner(self, owner_id: str, commodity_id: str) -> float:
+        """Sum across every region this owner holds the commodity in."""
         return sum(
             inventory.quantity
-            for (inventory_owner, inventory_commodity, inventory_region), inventory
-            in self.inventories.items()
-            if inventory_commodity == commodity_id
-            and (
-                inventory_region == owner_id
-                or (owner_id in self.companies and inventory_owner == owner_id)
-            )
+            for (inventory_owner, inventory_commodity, _), inventory in self.inventories.items()
+            if inventory_owner == owner_id and inventory_commodity == commodity_id
+        )
+
+    def get_region_inventory_quantity(self, region_id: str, commodity_id: str) -> float:
+        """Sum all owners' stock of a commodity at one region."""
+        return sum(
+            inventory.quantity
+            for inventory in self.get_inventories_in_region(region_id, commodity_id)
         )
 
     def get_region_storage_used(self, region_id: str) -> float:

@@ -12,8 +12,9 @@ def siege_phase(world):
             if r.owner_nation_id == siege.attacker_nation_id
         ]
         munitions_available = sum(
-            world.get_inventory_quantity(r.id, "munitions")
+            inv.quantity
             for r in attacker_regions
+            for inv in world.get_inventories_in_region(r.id, "munitions")
         )
 
         munitions_needed = siege.munitions_consumed_per_day
@@ -23,11 +24,13 @@ def siege_phase(world):
         for region in attacker_regions:
             if remaining_to_consume <= 0:
                 break
-            available_here = world.get_inventory_quantity(region.id, "munitions")
-            take = min(available_here, remaining_to_consume)
-            if take > 0:
-                world.remove_inventory(region.id, "munitions", take)
-                remaining_to_consume -= take
+            for inv in world.get_inventories_in_region(region.id, "munitions"):
+                if remaining_to_consume <= 0:
+                    break
+                take = min(inv.quantity, remaining_to_consume)
+                if take > 0:
+                    world.remove_inventory(inv.owner_id, "munitions", region.id, take)
+                    remaining_to_consume -= take
 
         defender_control = district.control.get(siege.defender_nation_id, 0.0)
         attacker_control = district.control.get(siege.attacker_nation_id, 0.0)
@@ -47,11 +50,18 @@ def siege_phase(world):
         if effective_attack <= 0:
             continue
 
-        shift = min(0.02, effective_attack / (effective_attack + effective_defense) * 0.05)
+        shift = min(
+            0.02,
+            effective_attack / (effective_attack + effective_defense) * 0.05,
+            defender_control,
+        )
 
         district.control[siege.attacker_nation_id] = attacker_control + shift
         district.control[siege.defender_nation_id] = max(0.0, defender_control - shift)
 
         if district.control[siege.defender_nation_id] <= 0.01:
             siege.status = "resolved_attacker"
-            district.contested = False
+            district.contested = any(
+                other.status == "active" and other.district_id == district.id
+                for other in world.sieges.values()
+            )

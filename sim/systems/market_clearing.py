@@ -80,99 +80,92 @@ def clear_market(world):
     double auction. All matched trades execute at the same clearing price.
     Updates commodity prices based on where supply meets demand.
     """
-    # Group orders by commodity
+    pending_statuses = {"open", "partially_filled"}
+    for order in world.orders.values():
+        if order.tick_placed < world.tick_number and order.status in pending_statuses:
+            order.status = "expired"
+
+    for commodity in world.commodities.values():
+        commodity.last_buy_quantity = 0.0
+        commodity.last_sell_quantity = 0.0
+        commodity.last_volume_traded = 0.0
+        commodity.last_clearing_price = commodity.current_price
+
     orders_by_commodity = {}
     for order in world.orders.values():
-        if order.status != "open":
+        if (
+            order.tick_placed != world.tick_number
+            or order.status not in pending_statuses
+            or order.quantity <= order.filled_quantity
+        ):
             continue
-        if order.commodity_id not in orders_by_commodity:
-            orders_by_commodity[order.commodity_id] = {"buy": [], "sell": []}
-        orders_by_commodity[order.commodity_id][order.order_type].append(order)
+        book = orders_by_commodity.setdefault(order.commodity_id, {"buy": [], "sell": []})
+        book[order.order_type].append(order)
 
     for commodity_id, book in orders_by_commodity.items():
         commodity = world.commodities.get(commodity_id)
         if not commodity:
             continue
 
-        buys = sorted(book["buy"], key=lambda o: o.price, reverse=True)  # highest first
-        sells = sorted(book["sell"], key=lambda o: o.price)  # lowest first
-
-        commodity.last_buy_quantity = sum(o.quantity for o in buys)
-        commodity.last_sell_quantity = sum(o.quantity for o in sells)
+        buys = sorted(book["buy"], key=lambda order: order.price, reverse=True)
+        sells = sorted(book["sell"], key=lambda order: order.price)
+        buy_total = sum(order.quantity - order.filled_quantity for order in buys)
+        sell_total = sum(order.quantity - order.filled_quantity for order in sells)
+        commodity.last_buy_quantity = buy_total
+        commodity.last_sell_quantity = sell_total
 
         if not buys or not sells:
-            # No trades possible — adjust price based on imbalance
-            if commodity.last_buy_quantity > 0 and commodity.last_sell_quantity == 0:
-                # Demand but no supply — price should rise
+            if buy_total > 0 and sell_total == 0:
                 commodity.current_price *= 1.05
-            elif commodity.last_buy_quantity == 0 and commodity.last_sell_quantity > 0:
-                # Supply but no demand — price should fall
+            elif sell_total > 0 and buy_total == 0:
                 commodity.current_price *= 0.95
-            commodity.last_volume_traded = 0.0
             continue
 
-        # Find clearing price and quantity using a simple crossing algorithm
-        # Walk down the buy curve and up the sell curve simultaneously
-        total_traded = 0.0
-        clearing_price = commodity.current_price  # default
+        buy_remaining = [
+            (order, order.quantity - order.filled_quantity) for order in buys
+        ]
+        sell_remaining = [
+            (order, order.quantity - order.filled_quantity) for order in sells
+        ]
+        matches = []
+        buy_index = 0
+        sell_index = 0
+        clearing_price = commodity.current_price
 
-        buy_remaining = [(o, o.quantity) for o in buys]
-        sell_remaining = [(o, o.quantity) for o in sells]
-
-        buy_idx = 0
-        sell_idx = 0
-
-        while buy_idx < len(buy_remaining) and sell_idx < len(sell_remaining):
-            buy_order, buy_qty = buy_remaining[buy_idx]
-            sell_order, sell_qty = sell_remaining[sell_idx]
-
-            # Check if this pair can trade (buy price >= sell price)
+        while buy_index < len(buy_remaining) and sell_index < len(sell_remaining):
+            buy_order, buy_quantity = buy_remaining[buy_index]
+            sell_order, sell_quantity = sell_remaining[sell_index]
             if buy_order.price < sell_order.price:
-                break  # no more matching possible
+                break
 
-            # Trade quantity is the minimum of remaining quantities
-            trade_qty = min(buy_qty, sell_qty)
-            clearing_price = (buy_order.price + sell_order.price) / 2  # midpoint
+            matched_quantity = min(buy_quantity, sell_quantity)
+            matches.append((buy_order, sell_order, matched_quantity))
+            clearing_price = (buy_order.price + sell_order.price) / 2
+            buy_remaining[buy_index] = (buy_order, buy_quantity - matched_quantity)
+            sell_remaining[sell_index] = (sell_order, sell_quantity - matched_quantity)
 
-            # Execute the trade
-            execute_trade(world, buy_order, sell_order, commodity_id, trade_qty, clearing_price)
+            if buy_remaining[buy_index][1] <= 0:
+                buy_index += 1
+            if sell_remaining[sell_index][1] <= 0:
+                sell_index += 1
 
-            total_traded += trade_qty
+        total_traded = sum(quantity for _, _, quantity in matches)
+        for buy_order, sell_order, quantity in matches:
+            execute_trade(world, buy_order, sell_order, commodity_id, quantity, clearing_price)
 
-            # Update remaining quantities
-            buy_remaining[buy_idx] = (buy_order, buy_qty - trade_qty)
-            sell_remaining[sell_idx] = (sell_order, sell_qty - trade_qty)
-
-            # Move to next order if this one is fully filled
-            if buy_remaining[buy_idx][1] <= 0:
-                buy_idx += 1
-            if sell_remaining[sell_idx][1] <= 0:
-                sell_idx += 1
-
-        # Update commodity market data
-        commodity.last_clearing_price = clearing_price if total_traded > 0 else commodity.current_price
         commodity.last_volume_traded = total_traded
-
-        # Price discovery: the clearing price becomes the new market price,
-        # but oversupply/shortage should push the result away from the raw midpoint.
         if total_traded > 0:
-            if commodity.last_sell_quantity > commodity.last_buy_quantity:
+            commodity.last_clearing_price = clearing_price
+            if sell_total > buy_total:
                 commodity.current_price = min(clearing_price, commodity.current_price * 0.95)
-            elif commodity.last_buy_quantity > commodity.last_sell_quantity:
+            elif buy_total > sell_total:
                 commodity.current_price = max(clearing_price, commodity.current_price * 1.05)
             else:
                 commodity.current_price = clearing_price
-        else:
-            # No trades — adjust based on order imbalance
-            if commodity.last_buy_quantity > commodity.last_sell_quantity:
-                commodity.current_price *= 1.02  # more demand than supply
-            elif commodity.last_sell_quantity > commodity.last_buy_quantity:
-                commodity.current_price *= 0.98  # more supply than demand
-
-        # Mark expired orders
-        for order in world.orders.values():
-            if order.tick_placed < world.tick_number and order.status == "open":
-                order.status = "expired"
+        elif buy_total > sell_total:
+            commodity.current_price *= 1.02
+        elif sell_total > buy_total:
+            commodity.current_price *= 0.98
 
 
 def execute_trade(world, buy_order, sell_order, commodity_id, quantity, price):

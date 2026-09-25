@@ -6,7 +6,7 @@ from tests.helpers import make_multi_chain_world
 class TestFullEconomy(unittest.TestCase):
     def test_food_and_fuel_both_generate_revenue_for_their_producers(self):
         w = make_multi_chain_world()
-        w.world.add_inventory("PORT_IRN", "crude_oil", 5000)
+        w.world.add_inventory("PORT_IRN", "crude_oil", "PORT_IRN", 5000)
 
         w.port_usa.population = 1_000_000
         w.fuel.per_capita_daily_demand = 0.005
@@ -19,14 +19,26 @@ class TestFullEconomy(unittest.TestCase):
         farm_cash_before = w.farm_co.cash
         oil_cash_before = w.oil_co.cash
 
-        w.world.run_tick()  # farm sells food to demand, refinery makes fuel (steel mill takes some, demand takes rest)
+        print("\n--- After tick 1 (crude should have shipped) ---")
+        print("PORT_USA crude:", w.world.get_inventory_quantity("PORT_USA", "crude_oil", "PORT_USA"))
+        print("PORT_IRN crude:", w.world.get_inventory_quantity("PORT_IRN", "crude_oil", "PORT_IRN"))
+
+        w.world.run_tick()  # farm sells food to demand, refinery makes fuel...
+
+        print("\n--- DEBUG ---")
+        print("Fuel price:", w.fuel.current_price)
+        print("PORT_USA fuel (region):", w.world.get_inventory_quantity("PORT_USA", "fuel", "PORT_USA"))
+        print("OILCO fuel (company):", w.world.get_total_inventory_for_owner("OILCO", "fuel"))
+        print("Steel produced:", w.world.get_total_inventory_for_owner("STEELCO", "steel"))
+        print("oil_co.total_revenue:", w.oil_co.total_revenue)
+        print("oil_co.input_costs_last_tick:", w.oil_co.input_costs_last_tick)
 
         self.assertGreater(w.farm_co.cash, farm_cash_before)
-        self.assertGreater(w.oil_co.revenue_last_tick, 0.0)
+        self.assertGreater(w.oil_co.total_revenue, 0.0)
 
     def test_blockade_starves_fuel_demand_and_spikes_price(self):
         w = make_multi_chain_world()
-        w.world.add_inventory("PORT_IRN", "crude_oil", 5000)
+        w.world.add_inventory("PORT_IRN", "crude_oil", "PORT_IRN", 5000)
 
         w.port_usa.population = 1_000_000
         w.fuel.per_capita_daily_demand = 0.01

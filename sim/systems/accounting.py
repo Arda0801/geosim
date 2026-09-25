@@ -1,31 +1,24 @@
-def charge_for_inputs(facility, produced, world) -> float:
+def charge_for_inputs(facility, produced, world, consumed_inputs) -> float:
     """Company pays spot price for every input unit its facility consumed."""
     company = world.companies.get(facility.company_id)
     cost = 0.0
 
-    for commodity_id, required_per_unit in facility.inputs.items():
+    for commodity_id, sources in consumed_inputs.items():
         commodity = world.commodities.get(commodity_id)
         if not commodity:
             continue
 
-        input_cost = produced * required_per_unit * commodity.current_price
+        input_quantity = sum(quantity for _, quantity in sources)
+        input_cost = input_quantity * commodity.current_price
         cost += input_cost
         if company and input_cost:
             company.cash -= input_cost
             company.input_costs_last_tick += input_cost
 
-            producer = next(
-                (candidate for candidate in world.production_facilities.values()
-                 if candidate.region_id == facility.region_id
-                 and commodity_id in candidate.outputs
-                 and candidate.company_id != facility.company_id),
-                None,
-            )
-            if producer:
-                producer_company = world.companies.get(producer.company_id)
-                if producer_company:
-                    record_sale(producer_company, commodity,
-                                produced * required_per_unit)
+            for owner_id, quantity in sources:
+                supplier = world.companies.get(owner_id)
+                if supplier and supplier.id != company.id:
+                    record_sale(supplier, commodity, quantity)
     return cost
 
 def record_sale(company, commodity, quantity, price_per_unit=None) -> float:

@@ -15,17 +15,28 @@ def collect_profit_tax(world):
     """
     for nation in world.nations.values():
         nation.tax_collected_last_tick = 0.0
-        nation_companies = [
-            c for c in world.companies.values()
-            if c.home_nation_id == nation.id
-        ]
-        for company in nation_companies:
-            if company.profit_last_tick > 0:
-                tax = company.profit_last_tick * nation.tax_rate
-                company.cash -= tax
-                company.tax_paid_last_tick += tax
-                nation.treasury += tax
-                nation.tax_collected_last_tick += tax
+        for company in world.companies.values():
+            if company.home_nation_id != nation.id:
+                continue
+
+            pre_tax_profit = (
+                company.revenue_last_tick
+                - company.input_costs_last_tick
+                - company.wage_costs_last_tick
+                - company.interest_paid_last_tick
+                - company.principal_paid_last_tick
+            )
+            tax_due = max(0.0, pre_tax_profit * nation.tax_rate)
+            tax = max(0.0, tax_due - company.tax_paid_last_tick)
+            if tax <= 0:
+                continue
+
+            company.cash -= tax
+            company.tax_paid_last_tick += tax
+            company.profit_last_tick -= tax
+            company.total_profit -= tax
+            nation.treasury += tax
+            nation.tax_collected_last_tick += tax
 
 
 def government_spending_phase(world):
